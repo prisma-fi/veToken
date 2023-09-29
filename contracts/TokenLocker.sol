@@ -31,10 +31,8 @@ contract TokenLocker is Ownable, SystemStart {
 
     IERC20 public immutable lockToken;
     IIncentiveVoting public immutable incentiveVoter;
-    address public immutable deploymentManager;
 
     bool public penaltyWithdrawalsEnabled;
-    uint256 public allowPenaltyWithdrawAfter;
 
     struct AccountData {
         // Currently locked balance. Each week the lock weight decays by this amount.
@@ -94,10 +92,9 @@ contract TokenLocker is Ownable, SystemStart {
     event LocksUnfrozen(address indexed account, uint256 amount);
     event LocksWithdrawn(address indexed account, uint256 withdrawn, uint256 penalty);
 
-    constructor(IERC20 _token, IIncentiveVoting _voter, address _manager, uint256 _lockToTokenRatio) {
+    constructor(IERC20 _token, IIncentiveVoting _voter, uint256 _lockToTokenRatio) {
         lockToken = _token;
         incentiveVoter = _voter;
-        deploymentManager = _manager;
 
         lockToTokenRatio = _lockToTokenRatio;
     }
@@ -107,20 +104,10 @@ contract TokenLocker is Ownable, SystemStart {
         _;
     }
 
-    function setAllowPenaltyWithdrawAfter(uint256 _timestamp) external returns (bool) {
-        require(msg.sender == deploymentManager, "!deploymentManager");
-        require(allowPenaltyWithdrawAfter == 0, "Already set");
-        require(_timestamp > block.timestamp && _timestamp < block.timestamp + 13 weeks, "Invalid timestamp");
-        allowPenaltyWithdrawAfter = _timestamp;
-        return true;
-    }
-
     /**
         @notice Allow or disallow early-exit of locks by paying a penalty
      */
     function setPenaltyWithdrawalsEnabled(bool _enabled) external onlyOwner returns (bool) {
-        uint256 start = allowPenaltyWithdrawAfter;
-        require(start != 0 && block.timestamp > start, "Not yet!");
         penaltyWithdrawalsEnabled = _enabled;
         return true;
     }
