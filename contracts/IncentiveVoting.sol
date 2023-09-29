@@ -2,6 +2,7 @@
 
 pragma solidity 0.8.19;
 
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "./dependencies/DelegatedOps.sol";
 import "./interfaces/ITokenLocker.sol";
 import "./dependencies/BaseConfig.sol";
@@ -14,9 +15,8 @@ import "./dependencies/BaseConfig.sol";
 
             Conceptually, incentive voting functions similarly to Curve's gauge weight voting.
  */
-contract IncentiveVoting is BaseConfig, DelegatedOps {
+contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
     ITokenLocker public immutable tokenLocker;
-    address public immutable vault;
 
     struct AccountData {
         // system week when the account's lock weights were registered
@@ -80,9 +80,8 @@ contract IncentiveVoting is BaseConfig, DelegatedOps {
     // emitted each time the votes for `account` are cleared
     event ClearedVotes(address indexed account, uint256 indexed week);
 
-    constructor(ITokenLocker _tokenLocker, address _vault) {
+    constructor(ITokenLocker _tokenLocker) {
         tokenLocker = _tokenLocker;
-        vault = _vault;
     }
 
     function getAccountRegisteredLocks(
@@ -203,8 +202,7 @@ contract IncentiveVoting is BaseConfig, DelegatedOps {
         return (1e18 * uint256(receiverWeeklyWeights[id][week])) / totalWeight;
     }
 
-    function registerNewReceiver() external returns (uint256) {
-        require(msg.sender == vault, "Not Treasury");
+    function registerNewReceiver() external onlyOwner returns (uint256) {
         uint256 id = receiverCount;
         receiverUpdatedWeek[id] = uint16(getEpoch());
         receiverCount = id + 1;
