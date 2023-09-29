@@ -5,7 +5,7 @@ pragma solidity ^0.8.0;
 interface ITokenLocker {
     struct LockData {
         uint256 amount;
-        uint256 weeksToUnlock;
+        uint256 epochsToUnlock;
     }
     struct ExtendLockData {
         uint256 amount;

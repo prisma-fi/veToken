@@ -11,7 +11,7 @@ import "./dependencies/BaseConfig.sol";
     @title Prisma Incentive Voting
     @notice Users with PRISMA balances locked in `TokenLocker` may register their
             lock weights in this contract, and use this weight to vote on where
-            new PRISMA emissions will be released in the following week.
+            new PRISMA emissions will be released in the following epoch.
 
             Conceptually, incentive voting functions similarly to Curve's gauge weight voting.
  */
@@ -19,24 +19,24 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
     ITokenLocker public immutable tokenLocker;
 
     struct AccountData {
-        // system week when the account's lock weights were registered
-        // used to offset `weeksToUnlock` when calculating vote weight
+        // system epoch when the account's lock weights were registered
+        // used to offset `epochsToUnlock` when calculating vote weight
         // as it decays over time
-        uint16 week;
+        uint16 epoch;
         // total registered vote weight, only recorded when frozen.
         // for unfrozen weight, recording the total is unnecessary because the
         // value decays. throughout the code, we check if frozenWeight > 0 as
         // a way to indicate if a lock is frozen.
         uint40 frozenWeight;
         uint16 points;
-        uint8 lockLength; // length of weeksToUnlock and lockedAmounts
+        uint8 lockLength; // length of epochsToUnlock and lockedAmounts
         uint16 voteLength; // length of activeVotes
         // array of [(receiver id, points), ... ] stored as uint16[2] for optimal packing
         uint16[2][MAX_PCT] activeVotes;
-        // arrays map to one another: lockedAmounts[0] unlocks in weeksToUnlock[0] weeks
+        // arrays map to one another: lockedAmounts[0] unlocks in epochsToUnlock[0] epochs
         // values are sorted by time-to-unlock descending
         uint32[MAX_LOCK_EPOCHS] lockedAmounts;
-        uint8[MAX_LOCK_EPOCHS] weeksToUnlock;
+        uint8[MAX_LOCK_EPOCHS] epochsToUnlock;
     }
 
     struct Vote {
@@ -46,7 +46,7 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
 
     struct LockData {
         uint256 amount;
-        uint256 weeksToUnlock;
+        uint256 epochsToUnlock;
     }
 
     mapping(address => AccountData) accountLockData;
@@ -54,21 +54,21 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
     uint256 public receiverCount;
     // id -> receiver data
     uint32[EPOCHS] public receiverDecayRate;
-    uint16[EPOCHS] public receiverUpdatedWeek;
-    // id -> week -> absolute vote weight
-    uint40[EPOCHS][EPOCHS] receiverWeeklyWeights;
-    // id -> week -> registered lock weight that is lost
-    uint32[EPOCHS][EPOCHS] public receiverWeeklyUnlocks;
+    uint16[EPOCHS] public receiverUpdatedEpoch;
+    // id -> epoch -> absolute vote weight
+    uint40[EPOCHS][EPOCHS] receiverEpochWeights;
+    // id -> epoch -> registered lock weight that is lost
+    uint32[EPOCHS][EPOCHS] public receiverEpochUnlocks;
 
     uint32 public totalDecayRate;
-    uint16 public totalUpdatedWeek;
-    uint40[EPOCHS] totalWeeklyWeights;
-    uint32[EPOCHS] public totalWeeklyUnlocks;
+    uint16 public totalUpdatedEpoch;
+    uint40[EPOCHS] totalEpochWeights;
+    uint32[EPOCHS] public totalEpochUnlocks;
 
     // emitted each time an account's lock weight is registered
     event AccountWeightRegistered(
         address indexed account,
-        uint256 indexed week,
+        uint256 indexed epoch,
         uint256 frozenBalance,
         ITokenLocker.LockData[] registeredLockData
     );
@@ -76,9 +76,9 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
     // vote points for the current call, for a complete list of an account's votes
     // you must join all instances of this event that fired more recently than the
     // latest `ClearedVotes` for the the same account.
-    event NewVotes(address indexed account, uint256 indexed week, Vote[] newVotes, uint256 totalPointsUsed);
+    event NewVotes(address indexed account, uint256 indexed epoch, Vote[] newVotes, uint256 totalPointsUsed);
     // emitted each time the votes for `account` are cleared
-    event ClearedVotes(address indexed account, uint256 indexed week);
+    event ClearedVotes(address indexed account, uint256 indexed epoch);
 
     constructor(ITokenLocker _tokenLocker) {
         tokenLocker = _tokenLocker;
@@ -104,19 +104,19 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
         return getReceiverWeightAt(idx, getEpoch());
     }
 
-    function getReceiverWeightAt(uint256 idx, uint256 week) public view returns (uint256) {
+    function getReceiverWeightAt(uint256 idx, uint256 epoch) public view returns (uint256) {
         if (idx >= receiverCount) return 0;
         uint256 rate = receiverDecayRate[idx];
-        uint256 updatedWeek = receiverUpdatedWeek[idx];
-        if (week <= updatedWeek) return receiverWeeklyWeights[idx][week];
+        uint256 updatedEpoch = receiverUpdatedEpoch[idx];
+        if (epoch <= updatedEpoch) return receiverEpochWeights[idx][epoch];
 
-        uint256 weight = receiverWeeklyWeights[idx][updatedWeek];
+        uint256 weight = receiverEpochWeights[idx][updatedEpoch];
         if (weight == 0) return 0;
 
-        while (updatedWeek < week) {
-            updatedWeek++;
+        while (updatedEpoch < epoch) {
+            updatedEpoch++;
             weight -= rate;
-            rate -= receiverWeeklyUnlocks[idx][updatedWeek];
+            rate -= receiverEpochUnlocks[idx][updatedEpoch];
         }
 
         return weight;
@@ -126,85 +126,85 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
         return getTotalWeightAt(getEpoch());
     }
 
-    function getTotalWeightAt(uint256 week) public view returns (uint256) {
+    function getTotalWeightAt(uint256 epoch) public view returns (uint256) {
         uint256 rate = totalDecayRate;
-        uint256 updatedWeek = totalUpdatedWeek;
-        if (week <= updatedWeek) return totalWeeklyWeights[week];
+        uint256 updatedEpoch = totalUpdatedEpoch;
+        if (epoch <= updatedEpoch) return totalEpochWeights[epoch];
 
-        uint256 weight = totalWeeklyWeights[updatedWeek];
+        uint256 weight = totalEpochWeights[updatedEpoch];
         if (weight == 0) return 0;
 
-        while (updatedWeek < week) {
-            updatedWeek++;
+        while (updatedEpoch < epoch) {
+            updatedEpoch++;
             weight -= rate;
-            rate -= totalWeeklyUnlocks[updatedWeek];
+            rate -= totalEpochUnlocks[updatedEpoch];
         }
         return weight;
     }
 
     function getReceiverWeightWrite(uint256 idx) public returns (uint256) {
         require(idx < receiverCount, "Invalid ID");
-        uint256 week = getEpoch();
-        uint256 updatedWeek = receiverUpdatedWeek[idx];
-        uint256 weight = receiverWeeklyWeights[idx][updatedWeek];
+        uint256 epoch = getEpoch();
+        uint256 updatedEpoch = receiverUpdatedEpoch[idx];
+        uint256 weight = receiverEpochWeights[idx][updatedEpoch];
 
         if (weight == 0) {
-            receiverUpdatedWeek[idx] = uint16(week);
+            receiverUpdatedEpoch[idx] = uint16(epoch);
             return 0;
         }
 
         uint256 rate = receiverDecayRate[idx];
-        while (updatedWeek < week) {
-            updatedWeek++;
+        while (updatedEpoch < epoch) {
+            updatedEpoch++;
             weight -= rate;
-            receiverWeeklyWeights[idx][updatedWeek] = uint40(weight);
-            rate -= receiverWeeklyUnlocks[idx][updatedWeek];
+            receiverEpochWeights[idx][updatedEpoch] = uint40(weight);
+            rate -= receiverEpochUnlocks[idx][updatedEpoch];
         }
 
         receiverDecayRate[idx] = uint32(rate);
-        receiverUpdatedWeek[idx] = uint16(week);
+        receiverUpdatedEpoch[idx] = uint16(epoch);
 
         return weight;
     }
 
     function getTotalWeightWrite() public returns (uint256) {
-        uint256 week = getEpoch();
-        uint256 updatedWeek = totalUpdatedWeek;
-        uint256 weight = totalWeeklyWeights[updatedWeek];
+        uint256 epoch = getEpoch();
+        uint256 updatedEpoch = totalUpdatedEpoch;
+        uint256 weight = totalEpochWeights[updatedEpoch];
 
         if (weight == 0) {
-            totalUpdatedWeek = uint16(week);
+            totalUpdatedEpoch = uint16(epoch);
             return 0;
         }
 
         uint256 rate = totalDecayRate;
-        while (updatedWeek < week) {
-            updatedWeek++;
+        while (updatedEpoch < epoch) {
+            updatedEpoch++;
             weight -= rate;
-            totalWeeklyWeights[updatedWeek] = uint40(weight);
-            rate -= totalWeeklyUnlocks[updatedWeek];
+            totalEpochWeights[updatedEpoch] = uint40(weight);
+            rate -= totalEpochUnlocks[updatedEpoch];
         }
 
         totalDecayRate = uint32(rate);
-        totalUpdatedWeek = uint16(week);
+        totalUpdatedEpoch = uint16(epoch);
 
         return weight;
     }
 
-    function getReceiverVotePct(uint256 id, uint256 week) external returns (uint256) {
-        week -= 1;
+    function getReceiverVotePct(uint256 id, uint256 epoch) external returns (uint256) {
+        epoch -= 1;
         getReceiverWeightWrite(id);
         getTotalWeightWrite();
 
-        uint256 totalWeight = totalWeeklyWeights[week];
+        uint256 totalWeight = totalEpochWeights[epoch];
         if (totalWeight == 0) return 0;
 
-        return (1e18 * uint256(receiverWeeklyWeights[id][week])) / totalWeight;
+        return (1e18 * uint256(receiverEpochWeights[id][epoch])) / totalWeight;
     }
 
     function registerNewReceiver() external onlyOwner returns (uint256) {
         uint256 id = receiverCount;
-        receiverUpdatedWeek[id] = uint16(getEpoch());
+        receiverUpdatedEpoch[id] = uint16(getEpoch());
         receiverCount = id + 1;
         return id;
     }
@@ -212,12 +212,12 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
     /**
         @notice Record the current lock weights for `account`, which can then
                 be used to vote.
-        @param minWeeks The minimum number of weeks-to-unlock to record weights
-                        for. The more active lock weeks that are registered, the
+        @param minEpochs The minimum number of epochs-to-unlock to record weights
+                        for. The more active lock epochs that are registered, the
                         more expensive it will be to vote. Accounts with many active
                         locks may wish to skip smaller locks to reduce gas costs.
      */
-    function registerAccountWeight(address account, uint256 minWeeks) external callerOrDelegated(account) {
+    function registerAccountWeight(address account, uint256 minEpochs) external callerOrDelegated(account) {
         AccountData storage accountData = accountLockData[account];
         Vote[] memory existingVotes;
 
@@ -229,7 +229,7 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
         }
 
         // get updated account lock weights and store locally
-        uint256 frozenWeight = _registerAccountWeight(account, minWeeks);
+        uint256 frozenWeight = _registerAccountWeight(account, minEpochs);
 
         // resubmit the account's active vote using the newly registered weights
         _addVoteWeights(account, existingVotes, frozenWeight);
@@ -239,12 +239,12 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
     /**
         @notice Record the current lock weights for `account` and submit new votes
         @dev New votes replace any prior active votes
-        @param minWeeks Minimum number of weeks-to-unlock to record weights for
+        @param minEpochs Minimum number of epochs-to-unlock to record weights for
         @param votes Array of tuples of (recipient id, vote points)
      */
     function registerAccountWeightAndVote(
         address account,
-        uint256 minWeeks,
+        uint256 minEpochs,
         Vote[] calldata votes
     ) external callerOrDelegated(account) {
         AccountData storage accountData = accountLockData[account];
@@ -257,7 +257,7 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
         }
 
         // get updated account lock weights and store locally
-        uint256 frozenWeight = _registerAccountWeight(account, minWeeks);
+        uint256 frozenWeight = _registerAccountWeight(account, minEpochs);
 
         // adjust vote weights based on the account's new vote
         _addVoteWeights(account, votes, frozenWeight);
@@ -269,7 +269,7 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
         @notice Vote for one or more recipients
         @dev * Each voter can vote with up to `MAX_PCT` points
              * It is not required to use every point in a single call
-             * Votes carry over week-to-week and decay at the same rate as lock
+             * Votes carry over epoch-to-epoch and decay at the same rate as lock
                weight
              * The total weight is NOT distributed porportionally based on the
                points used, an account must allocate all points in order to use
@@ -326,7 +326,7 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
         );
 
         AccountData storage accountData = accountLockData[account];
-        uint256 week = getEpoch();
+        uint256 epoch = getEpoch();
         uint256 length = accountData.lockLength;
         uint256 frozenWeight = accountData.frozenWeight;
         if (length > 0 || frozenWeight > 0) {
@@ -334,13 +334,13 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
                 _removeVoteWeights(account, getAccountCurrentVotes(account), frozenWeight);
                 accountData.voteLength = 0;
                 accountData.points = 0;
-                emit ClearedVotes(account, week);
+                emit ClearedVotes(account, epoch);
             }
             // lockLength and frozenWeight are never both > 0
             if (length > 0) accountData.lockLength = 0;
             else accountData.frozenWeight = 0;
 
-            emit AccountWeightRegistered(account, week, 0, new ITokenLocker.LockData[](0));
+            emit AccountWeightRegistered(account, epoch, 0, new ITokenLocker.LockData[](0));
         }
 
         return true;
@@ -366,13 +366,13 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
                 _removeVoteWeightsFrozen(existingVotes, frozenWeight);
             }
 
-            uint256 week = getEpoch();
-            accountData.week = uint16(week);
+            uint256 epoch = getEpoch();
+            accountData.epoch = uint16(epoch);
             accountData.frozenWeight = 0;
 
             uint amount = frozenWeight / MAX_LOCK_EPOCHS;
             accountData.lockedAmounts[0] = uint32(amount);
-            accountData.weeksToUnlock[0] = uint8(MAX_LOCK_EPOCHS);
+            accountData.epochsToUnlock[0] = uint8(MAX_LOCK_EPOCHS);
             accountData.lockLength = 1;
 
             // optionally resubmit previous votes
@@ -382,55 +382,55 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
                 } else {
                     accountData.voteLength = 0;
                     accountData.points = 0;
-                    emit ClearedVotes(account, week);
+                    emit ClearedVotes(account, epoch);
                 }
             }
 
             ITokenLocker.LockData[] memory lockData = new ITokenLocker.LockData[](1);
-            lockData[0] = ITokenLocker.LockData({ amount: amount, weeksToUnlock: MAX_LOCK_EPOCHS });
-            emit AccountWeightRegistered(account, week, 0, lockData);
+            lockData[0] = ITokenLocker.LockData({ amount: amount, epochsToUnlock: MAX_LOCK_EPOCHS });
+            emit AccountWeightRegistered(account, epoch, 0, lockData);
         }
         return true;
     }
 
     /**
         @dev Get the current registered lock weights for `account`, as an array
-             of [(amount, weeks to unlock)] sorted by weeks-to-unlock descending.
+             of [(amount, epochs to unlock)] sorted by epochs-to-unlock descending.
      */
     function _getAccountLocks(address account) internal view returns (LockData[] memory lockData) {
         AccountData storage accountData = accountLockData[account];
 
         uint256 length = accountData.lockLength;
-        uint256 systemWeek = getEpoch();
-        uint256 accountWeek = accountData.frozenWeight > 0 ? systemWeek : accountData.week;
-        uint8[MAX_LOCK_EPOCHS] storage weeksToUnlock = accountData.weeksToUnlock;
+        uint256 systemEpoch = getEpoch();
+        uint256 accountEpoch = accountData.frozenWeight > 0 ? systemEpoch : accountData.epoch;
+        uint8[MAX_LOCK_EPOCHS] storage epochsToUnlock = accountData.epochsToUnlock;
         uint32[MAX_LOCK_EPOCHS] storage amounts = accountData.lockedAmounts;
 
         lockData = new LockData[](length);
         uint256 idx;
         for (; idx < length; idx++) {
-            uint256 unlockWeek = weeksToUnlock[idx] + accountWeek;
-            if (unlockWeek <= systemWeek) {
+            uint256 unlockEpoch = epochsToUnlock[idx] + accountEpoch;
+            if (unlockEpoch <= systemEpoch) {
                 assembly {
                     mstore(lockData, idx)
                 }
                 break;
             }
-            uint256 remainingWeeks = unlockWeek - systemWeek;
+            uint256 remainingEpochs = unlockEpoch - systemEpoch;
             uint256 amount = amounts[idx];
-            lockData[idx] = LockData({ amount: amount, weeksToUnlock: remainingWeeks });
+            lockData[idx] = LockData({ amount: amount, epochsToUnlock: remainingEpochs });
         }
 
         return lockData;
     }
 
-    function _registerAccountWeight(address account, uint256 minWeeks) internal returns (uint256) {
+    function _registerAccountWeight(address account, uint256 minEpochs) internal returns (uint256) {
         AccountData storage accountData = accountLockData[account];
 
         // get updated account lock weights and store locally
         (ITokenLocker.LockData[] memory lockData, uint256 frozen) = tokenLocker.getAccountActiveLocks(
             account,
-            minWeeks
+            minEpochs
         );
         uint256 length = lockData.length;
         if (frozen > 0) {
@@ -439,18 +439,18 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
         } else if (length > 0) {
             for (uint256 i = 0; i < length; i++) {
                 uint256 amount = lockData[i].amount;
-                uint256 weeksToUnlock = lockData[i].weeksToUnlock;
+                uint256 epochsToUnlock = lockData[i].epochsToUnlock;
                 accountData.lockedAmounts[i] = uint32(amount);
-                accountData.weeksToUnlock[i] = uint8(weeksToUnlock);
+                accountData.epochsToUnlock[i] = uint8(epochsToUnlock);
             }
         } else {
             revert("No active locks");
         }
-        uint256 week = getEpoch();
-        accountData.week = uint16(week);
+        uint256 epoch = getEpoch();
+        accountData.epoch = uint16(epoch);
         accountData.lockLength = uint8(length);
 
-        emit AccountWeightRegistered(account, week, frozen, lockData);
+        emit AccountWeightRegistered(account, epoch, frozen, lockData);
 
         return frozen;
     }
@@ -513,8 +513,8 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
 
         uint256 totalWeight;
         uint256 totalDecay;
-        uint256 systemWeek = getEpoch();
-        uint256[MAX_LOCK_EPOCHS + 1] memory weeklyUnlocks;
+        uint256 systemEpoch = getEpoch();
+        uint256[MAX_LOCK_EPOCHS + 1] memory epochUnlocks;
         for (uint256 i = 0; i < votes.length; i++) {
             uint256 id = votes[i].id;
             uint256 points = votes[i].points;
@@ -522,15 +522,15 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
             uint256 weight = 0;
             uint256 decayRate = 0;
             for (uint256 x = 0; x < lockLength; x++) {
-                uint256 weeksToUnlock = lockData[x].weeksToUnlock;
+                uint256 epochsToUnlock = lockData[x].epochsToUnlock;
                 uint256 amount = (lockData[x].amount * points) / MAX_PCT;
-                receiverWeeklyUnlocks[id][systemWeek + weeksToUnlock] += uint32(amount);
+                receiverEpochUnlocks[id][systemEpoch + epochsToUnlock] += uint32(amount);
 
-                weeklyUnlocks[weeksToUnlock] += uint32(amount);
-                weight += amount * weeksToUnlock;
+                epochUnlocks[epochsToUnlock] += uint32(amount);
+                weight += amount * epochsToUnlock;
                 decayRate += amount;
             }
-            receiverWeeklyWeights[id][systemWeek] = uint40(getReceiverWeightWrite(id) + weight);
+            receiverEpochWeights[id][systemEpoch] = uint40(getReceiverWeightWrite(id) + weight);
             receiverDecayRate[id] += uint32(decayRate);
 
             totalWeight += weight;
@@ -538,16 +538,16 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
         }
 
         for (uint256 i = 0; i < lockLength; i++) {
-            uint256 weeksToUnlock = lockData[i].weeksToUnlock;
-            totalWeeklyUnlocks[systemWeek + weeksToUnlock] += uint32(weeklyUnlocks[weeksToUnlock]);
+            uint256 epochsToUnlock = lockData[i].epochsToUnlock;
+            totalEpochUnlocks[systemEpoch + epochsToUnlock] += uint32(epochUnlocks[epochsToUnlock]);
         }
-        totalWeeklyWeights[systemWeek] = uint40(getTotalWeightWrite() + totalWeight);
+        totalEpochWeights[systemEpoch] = uint40(getTotalWeightWrite() + totalWeight);
         totalDecayRate += uint32(totalDecay);
     }
 
     /** @dev Should not be called directly, use `_addVoteWeights` */
     function _addVoteWeightsFrozen(Vote[] memory votes, uint256 frozenWeight) internal {
-        uint256 systemWeek = getEpoch();
+        uint256 systemEpoch = getEpoch();
         uint256 totalWeight;
         uint256 length = votes.length;
         for (uint256 i = 0; i < length; i++) {
@@ -556,11 +556,11 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
 
             uint256 weight = (frozenWeight * points) / MAX_PCT;
 
-            receiverWeeklyWeights[id][systemWeek] = uint40(getReceiverWeightWrite(id) + weight);
+            receiverEpochWeights[id][systemEpoch] = uint40(getReceiverWeightWrite(id) + weight);
             totalWeight += weight;
         }
 
-        totalWeeklyWeights[systemWeek] = uint40(getTotalWeightWrite() + totalWeight);
+        totalEpochWeights[systemEpoch] = uint40(getTotalWeightWrite() + totalWeight);
     }
 
     /** @dev Should not be called directly, use `_removeVoteWeights` */
@@ -570,8 +570,8 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
 
         uint256 totalWeight;
         uint256 totalDecay;
-        uint256 systemWeek = getEpoch();
-        uint256[MAX_LOCK_EPOCHS + 1] memory weeklyUnlocks;
+        uint256 systemEpoch = getEpoch();
+        uint256[MAX_LOCK_EPOCHS + 1] memory epochUnlocks;
 
         for (uint256 i = 0; i < votes.length; i++) {
             (uint256 id, uint256 points) = (votes[i].id, votes[i].points);
@@ -579,15 +579,15 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
             uint256 weight = 0;
             uint256 decayRate = 0;
             for (uint256 x = 0; x < lockLength; x++) {
-                uint256 weeksToUnlock = lockData[x].weeksToUnlock;
+                uint256 epochsToUnlock = lockData[x].epochsToUnlock;
                 uint256 amount = (lockData[x].amount * points) / MAX_PCT;
-                receiverWeeklyUnlocks[id][systemWeek + weeksToUnlock] -= uint32(amount);
+                receiverEpochUnlocks[id][systemEpoch + epochsToUnlock] -= uint32(amount);
 
-                weeklyUnlocks[weeksToUnlock] += uint32(amount);
-                weight += amount * weeksToUnlock;
+                epochUnlocks[epochsToUnlock] += uint32(amount);
+                weight += amount * epochsToUnlock;
                 decayRate += amount;
             }
-            receiverWeeklyWeights[id][systemWeek] = uint40(getReceiverWeightWrite(id) - weight);
+            receiverEpochWeights[id][systemEpoch] = uint40(getReceiverWeightWrite(id) - weight);
             receiverDecayRate[id] -= uint32(decayRate);
 
             totalWeight += weight;
@@ -595,16 +595,16 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
         }
 
         for (uint256 i = 0; i < lockLength; i++) {
-            uint256 weeksToUnlock = lockData[i].weeksToUnlock;
-            totalWeeklyUnlocks[systemWeek + weeksToUnlock] -= uint32(weeklyUnlocks[weeksToUnlock]);
+            uint256 epochsToUnlock = lockData[i].epochsToUnlock;
+            totalEpochUnlocks[systemEpoch + epochsToUnlock] -= uint32(epochUnlocks[epochsToUnlock]);
         }
-        totalWeeklyWeights[systemWeek] = uint40(getTotalWeightWrite() - totalWeight);
+        totalEpochWeights[systemEpoch] = uint40(getTotalWeightWrite() - totalWeight);
         totalDecayRate -= uint32(totalDecay);
     }
 
     /** @dev Should not be called directly, use `_removeVoteWeights` */
     function _removeVoteWeightsFrozen(Vote[] memory votes, uint256 frozenWeight) internal {
-        uint256 systemWeek = getEpoch();
+        uint256 systemEpoch = getEpoch();
 
         uint256 totalWeight;
         uint256 length = votes.length;
@@ -613,11 +613,11 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
 
             uint256 weight = (frozenWeight * points) / MAX_PCT;
 
-            receiverWeeklyWeights[id][systemWeek] = uint40(getReceiverWeightWrite(id) - weight);
+            receiverEpochWeights[id][systemEpoch] = uint40(getReceiverWeightWrite(id) - weight);
 
             totalWeight += weight;
         }
 
-        totalWeeklyWeights[systemWeek] = uint40(getTotalWeightWrite() - totalWeight);
+        totalEpochWeights[systemEpoch] = uint40(getTotalWeightWrite() - totalWeight);
     }
 }

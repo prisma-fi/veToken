@@ -20,7 +20,7 @@ contract AdminVoting is DelegatedOps, BaseConfig {
         address indexed account,
         uint256 proposalId,
         Action[] payload,
-        uint256 week,
+        uint256 epoch,
         uint256 requiredWeight
     );
     event ProposalHasMetQuorum(uint256 id, uint256 canExecuteAfter);
@@ -38,7 +38,7 @@ contract AdminVoting is DelegatedOps, BaseConfig {
     event GuardianSet(address guardian);
 
     struct Proposal {
-        uint16 week; // week which vote weights are based upon
+        uint16 epoch; // epoch which vote weights are based upon
         uint32 createdAt; // timestamp when the proposal was created
         uint32 canExecuteAfter; // earliest timestamp when proposal can be executed (0 if not passed)
         uint40 currentWeight; //  amount of weight currently voting in favor
@@ -92,11 +92,11 @@ contract AdminVoting is DelegatedOps, BaseConfig {
     }
 
     function minCreateProposalWeight() public view returns (uint256) {
-        uint256 week = getEpoch();
-        if (week == 0) return 0;
-        week -= 1;
+        uint256 epoch = getEpoch();
+        if (epoch == 0) return 0;
+        epoch -= 1;
 
-        uint256 totalWeight = tokenLocker.getTotalWeightAt(week);
+        uint256 totalWeight = tokenLocker.getTotalWeightAt(epoch);
         return (totalWeight * minCreateProposalPct) / MAX_PCT;
     }
 
@@ -109,7 +109,7 @@ contract AdminVoting is DelegatedOps, BaseConfig {
         external
         view
         returns (
-            uint256 week,
+            uint256 epoch,
             uint256 createdAt,
             uint256 currentWeight,
             uint256 requiredWeight,
@@ -127,7 +127,7 @@ contract AdminVoting is DelegatedOps, BaseConfig {
             proposal.canExecuteAfter + MAX_TIME_TO_EXECUTION > block.timestamp);
 
         return (
-            proposal.week,
+            proposal.epoch,
             proposal.createdAt,
             proposal.currentWeight,
             proposal.requiredWeight,
@@ -151,12 +151,12 @@ contract AdminVoting is DelegatedOps, BaseConfig {
             "MIN_TIME_BETWEEN_PROPOSALS"
         );
 
-        // week is set at -1 to the active week so that weights are finalized
-        uint256 week = getEpoch();
-        require(week > 0, "No proposals in first week");
-        week -= 1;
+        // epoch is set at -1 to the active epoch so that weights are finalized
+        uint256 epoch = getEpoch();
+        require(epoch > 0, "No proposals in first epoch");
+        epoch -= 1;
 
-        uint256 accountWeight = tokenLocker.getAccountWeightAt(account, week);
+        uint256 accountWeight = tokenLocker.getAccountWeightAt(account, epoch);
         require(accountWeight >= minCreateProposalWeight(), "Not enough weight to propose");
 
         // if the only action is `prismaCore.setGuardian()`, use
@@ -168,12 +168,12 @@ contract AdminVoting is DelegatedOps, BaseConfig {
             _passingPct = SET_GUARDIAN_PASSING_PCT;
         } else _passingPct = passingPct;
 
-        uint256 totalWeight = tokenLocker.getTotalWeightAt(week);
+        uint256 totalWeight = tokenLocker.getTotalWeightAt(epoch);
         uint40 requiredWeight = uint40((totalWeight * _passingPct) / MAX_PCT);
         uint256 idx = proposalData.length;
         proposalData.push(
             Proposal({
-                week: uint16(week),
+                epoch: uint16(epoch),
                 createdAt: uint32(block.timestamp),
                 canExecuteAfter: 0,
                 currentWeight: 0,
@@ -186,7 +186,7 @@ contract AdminVoting is DelegatedOps, BaseConfig {
             proposalPayloads[idx].push(payload[i]);
         }
         latestProposalTimestamp[account] = block.timestamp;
-        emit ProposalCreated(account, idx, payload, week, requiredWeight);
+        emit ProposalCreated(account, idx, payload, epoch, requiredWeight);
     }
 
     /**
@@ -205,7 +205,7 @@ contract AdminVoting is DelegatedOps, BaseConfig {
         require(!proposal.processed, "Proposal already processed");
         require(proposal.createdAt + VOTING_PERIOD > block.timestamp, "Voting period has closed");
 
-        uint256 accountWeight = tokenLocker.getAccountWeightAt(account, proposal.week);
+        uint256 accountWeight = tokenLocker.getAccountWeightAt(account, proposal.epoch);
         if (weight == 0) {
             weight = accountWeight;
             require(weight > 0, "No vote weight");
