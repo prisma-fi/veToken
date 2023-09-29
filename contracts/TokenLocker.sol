@@ -416,8 +416,8 @@ contract TokenLocker is Ownable, BaseConfig {
             accountData.frozen = uint32(frozen + _amount);
             _weeks = MAX_LOCK_EPOCHS;
         } else {
-            // disallow a 1 week lock in the final 3 days of the week
-            if (_weeks == 1 && block.timestamp % 1 weeks > 4 days) _weeks = 2;
+            // disallow a 1 epoch lock in the final half of the epoch
+            if (_weeks == 1 && block.timestamp % EPOCH_LENGTH > EPOCH_LENGTH / 2) _weeks = 2;
 
             accountData.locked = uint32(accountData.locked + _amount);
             totalDecayRate = uint32(totalDecayRate + _amount);
@@ -535,8 +535,8 @@ contract TokenLocker is Ownable, BaseConfig {
             require(week > 0, "Min 1 week");
             require(week <= MAX_LOCK_EPOCHS, "Exceeds MAX_LOCK_EPOCHS");
 
-            // disallow a 1 week lock in the final 3 days of the week
-            if (week == 1 && block.timestamp % 1 weeks > 4 days) week = 2;
+            // disallow a 1 epoch lock in the final half of the epoch
+            if (week == 1 && block.timestamp % EPOCH_LENGTH > EPOCH_LENGTH / 2) week = 2;
 
             increasedAmount += amount;
             increasedWeight += amount * week;
