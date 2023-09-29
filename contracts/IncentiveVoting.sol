@@ -2,9 +2,9 @@
 
 pragma solidity 0.8.19;
 
-import "../dependencies/DelegatedOps.sol";
-import "../dependencies/SystemStart.sol";
-import "../interfaces/ITokenLocker.sol";
+import "./dependencies/DelegatedOps.sol";
+import "./dependencies/SystemStart.sol";
+import "./interfaces/ITokenLocker.sol";
 
 /**
     @title Prisma Incentive Voting
@@ -83,7 +83,7 @@ contract IncentiveVoting is DelegatedOps, SystemStart {
     // emitted each time the votes for `account` are cleared
     event ClearedVotes(address indexed account, uint256 indexed week);
 
-    constructor(address _prismaCore, ITokenLocker _tokenLocker, address _vault) SystemStart(_prismaCore) {
+    constructor(ITokenLocker _tokenLocker, address _vault) {
         tokenLocker = _tokenLocker;
         vault = _vault;
     }

@@ -2,11 +2,10 @@
 
 pragma solidity 0.8.19;
 
-import "../dependencies/PrismaOwnable.sol";
-import "../dependencies/SystemStart.sol";
-import "../interfaces/IPrismaCore.sol";
-import "../interfaces/IIncentiveVoting.sol";
-import "../interfaces/IPrismaToken.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "./dependencies/SystemStart.sol";
+import "./interfaces/IIncentiveVoting.sol";
 
 /**
     @title Prisma Token Locker
@@ -14,7 +13,7 @@ import "../interfaces/IPrismaToken.sol";
             which is used within `AdminVoting` and `IncentiveVoting` to vote on
             core protocol operations.
  */
-contract TokenLocker is PrismaOwnable, SystemStart {
+contract TokenLocker is Ownable, SystemStart {
     // The maximum number of weeks that tokens may be locked for. Also determines the maximum
     // number of active locks that a single account may open. Weight is calculated as:
     // `[balance] * [weeks to unlock]`. Weights are stored as `uint40` and balances as `uint32`,
@@ -30,9 +29,8 @@ contract TokenLocker is PrismaOwnable, SystemStart {
     // cannot be violated or the system could break due to overflow.
     uint256 public immutable lockToTokenRatio;
 
-    IPrismaToken public immutable lockToken;
+    IERC20 public immutable lockToken;
     IIncentiveVoting public immutable incentiveVoter;
-    IPrismaCore public immutable prismaCore;
     address public immutable deploymentManager;
 
     bool public penaltyWithdrawalsEnabled;
@@ -96,16 +94,9 @@ contract TokenLocker is PrismaOwnable, SystemStart {
     event LocksUnfrozen(address indexed account, uint256 amount);
     event LocksWithdrawn(address indexed account, uint256 withdrawn, uint256 penalty);
 
-    constructor(
-        address _prismaCore,
-        IPrismaToken _token,
-        IIncentiveVoting _voter,
-        address _manager,
-        uint256 _lockToTokenRatio
-    ) SystemStart(_prismaCore) PrismaOwnable(_prismaCore) {
+    constructor(IERC20 _token, IIncentiveVoting _voter, address _manager, uint256 _lockToTokenRatio) {
         lockToken = _token;
         incentiveVoter = _voter;
-        prismaCore = IPrismaCore(_prismaCore);
         deploymentManager = _manager;
 
         lockToTokenRatio = _lockToTokenRatio;
@@ -427,7 +418,7 @@ contract TokenLocker is PrismaOwnable, SystemStart {
         require(_weeks > 0, "Min 1 week");
         require(_amount > 0, "Amount must be nonzero");
         _lock(_account, _amount, _weeks);
-        lockToken.transferToLocker(msg.sender, _amount * lockToTokenRatio);
+        lockToken.transferFrom(msg.sender, address(this), _amount * lockToTokenRatio);
 
         return true;
     }
@@ -584,7 +575,7 @@ contract TokenLocker is PrismaOwnable, SystemStart {
         accountData.updateWeeks[systemWeek / 256] = bitfield[0];
         accountData.updateWeeks[(systemWeek / 256) + 1] = bitfield[1];
 
-        lockToken.transferToLocker(msg.sender, increasedAmount * lockToTokenRatio);
+        lockToken.transferFrom(msg.sender, address(this), increasedAmount * lockToTokenRatio);
 
         // update account and total weight / decay storage values
         accountWeeklyWeights[_account][systemWeek] = uint40(accountWeight + increasedWeight);
@@ -882,7 +873,7 @@ contract TokenLocker is PrismaOwnable, SystemStart {
         totalWeeklyWeights[systemWeek] = uint40(getTotalWeightWrite() - decreasedWeight);
 
         lockToken.transfer(msg.sender, amountToWithdraw);
-        lockToken.transfer(prismaCore.feeReceiver(), penaltyTotal);
+        // lockToken.transfer(prismaCore.feeReceiver(), penaltyTotal);
         emit LocksWithdrawn(msg.sender, amountToWithdraw, penaltyTotal);
 
         return amountToWithdraw;

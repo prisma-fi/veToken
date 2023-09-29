@@ -3,9 +3,9 @@
 pragma solidity 0.8.19;
 
 import "@openzeppelin/contracts/utils/Address.sol";
-import "../dependencies/DelegatedOps.sol";
-import "../dependencies/SystemStart.sol";
-import "../interfaces/ITokenLocker.sol";
+import "./dependencies/DelegatedOps.sol";
+import "./dependencies/SystemStart.sol";
+import "./interfaces/ITokenLocker.sol";
 
 /**
     @title Prisma DAO Admin Voter
@@ -58,7 +58,7 @@ contract AdminVoting is DelegatedOps, SystemStart {
     uint256 public constant SET_GUARDIAN_PASSING_PCT = 5010;
 
     ITokenLocker public immutable tokenLocker;
-    IPrismaCore public immutable prismaCore;
+    address public immutable prismaCore;
 
     Proposal[] proposalData;
     mapping(uint256 => Action[]) proposalPayloads;
@@ -75,14 +75,9 @@ contract AdminVoting is DelegatedOps, SystemStart {
     // percent of total weight that must vote for a proposal before it can be executed
     uint256 public passingPct;
 
-    constructor(
-        address _prismaCore,
-        ITokenLocker _tokenLocker,
-        uint256 _minCreateProposalPct,
-        uint256 _passingPct
-    ) SystemStart(_prismaCore) {
+    constructor(ITokenLocker _tokenLocker, uint256 _minCreateProposalPct, uint256 _passingPct) {
         tokenLocker = _tokenLocker;
-        prismaCore = IPrismaCore(_prismaCore);
+        prismaCore = address(0); // TODO
 
         minCreateProposalPct = _minCreateProposalPct;
         passingPct = _passingPct;
@@ -239,7 +234,7 @@ contract AdminVoting is DelegatedOps, SystemStart {
         @param id Proposal ID
      */
     function cancelProposal(uint256 id) external {
-        require(msg.sender == prismaCore.guardian(), "Only guardian can cancel proposals");
+        // require(msg.sender == prismaCore.guardian(), "Only guardian can cancel proposals");   TODO
         require(id < proposalData.length, "Invalid ID");
 
         Action[] storage payload = proposalPayloads[id];
@@ -303,14 +298,6 @@ contract AdminVoting is DelegatedOps, SystemStart {
         return true;
     }
 
-    /**
-        @dev Unguarded method to allow accepting ownership transfer of `PrismaCore`
-             at the end of the deployment sequence
-     */
-    function acceptTransferOwnership() external {
-        prismaCore.acceptTransferOwnership();
-    }
-
     function _isSetGuardianPayload(uint256 payloadLength, Action memory action) internal view returns (bool) {
         if (payloadLength == 1 && action.target == address(prismaCore)) {
             bytes memory data = action.data;
@@ -319,7 +306,7 @@ contract AdminVoting is DelegatedOps, SystemStart {
             assembly {
                 sig := mload(add(data, 0x20))
             }
-            return sig == IPrismaCore.setGuardian.selector;
+            return true; // sig == IPrismaCore.setGuardian.selector;   TODO
         }
         return false;
     }
