@@ -4,7 +4,7 @@ pragma solidity 0.8.19;
 
 import "@openzeppelin/contracts/utils/Address.sol";
 import "./dependencies/DelegatedOps.sol";
-import "./dependencies/SystemStart.sol";
+import "./dependencies/BaseConfig.sol";
 import "./interfaces/ITokenLocker.sol";
 
 /**
@@ -13,7 +13,7 @@ import "./interfaces/ITokenLocker.sol";
             arbitrary function calls only after a required percentage of PRISMA
             lockers have signalled in favor of performing the action.
  */
-contract AdminVoting is DelegatedOps, SystemStart {
+contract AdminVoting is DelegatedOps, BaseConfig {
     using Address for address;
 
     event ProposalCreated(
@@ -69,8 +69,6 @@ contract AdminVoting is DelegatedOps, SystemStart {
 
     mapping(address account => uint256 timestamp) public latestProposalTimestamp;
 
-    // percentages are expressed as a whole number out of `MAX_PCT`
-    uint256 public constant MAX_PCT = 10000;
     // percent of total weight required to create a new proposal
     uint256 public minCreateProposalPct;
     // percent of total weight that must vote for a proposal before it can be executed
@@ -94,7 +92,7 @@ contract AdminVoting is DelegatedOps, SystemStart {
     }
 
     function minCreateProposalWeight() public view returns (uint256) {
-        uint256 week = getWeek();
+        uint256 week = getEpoch();
         if (week == 0) return 0;
         week -= 1;
 
@@ -154,7 +152,7 @@ contract AdminVoting is DelegatedOps, SystemStart {
         );
 
         // week is set at -1 to the active week so that weights are finalized
-        uint256 week = getWeek();
+        uint256 week = getEpoch();
         require(week > 0, "No proposals in first week");
         week -= 1;
 
@@ -166,7 +164,7 @@ contract AdminVoting is DelegatedOps, SystemStart {
         uint256 _passingPct;
         bool isSetGuardianPayload = _isSetGuardianPayload(payload.length, payload[0]);
         if (isSetGuardianPayload) {
-            require(block.timestamp > startTime + BOOTSTRAP_PERIOD, "Cannot change guardian during bootstrap");
+            require(block.timestamp > START_TIME + BOOTSTRAP_PERIOD, "Cannot change guardian during bootstrap");
             _passingPct = SET_GUARDIAN_PASSING_PCT;
         } else _passingPct = passingPct;
 

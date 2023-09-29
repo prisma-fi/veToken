@@ -4,7 +4,7 @@ pragma solidity 0.8.19;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "./dependencies/SystemStart.sol";
+import "./dependencies/BaseConfig.sol";
 import "./interfaces/IIncentiveVoting.sol";
 
 /**
@@ -13,13 +13,7 @@ import "./interfaces/IIncentiveVoting.sol";
             which is used within `AdminVoting` and `IncentiveVoting` to vote on
             core protocol operations.
  */
-contract TokenLocker is Ownable, SystemStart {
-    // The maximum number of weeks that tokens may be locked for. Also determines the maximum
-    // number of active locks that a single account may open. Weight is calculated as:
-    // `[balance] * [weeks to unlock]`. Weights are stored as `uint40` and balances as `uint32`,
-    // so the max lock weeks cannot be greater than 256 or the system could break due to overflow.
-    uint256 public constant MAX_LOCK_WEEKS = 52;
-
+contract TokenLocker is Ownable, BaseConfig {
     // Multiplier applied during token deposits and withdrawals. A balance within this
     // contract corresponds to a deposit of `balance * lockToTokenRatio` tokens. Balances
     // in this contract are stored as `uint32`, so the invariant:
@@ -39,7 +33,7 @@ contract TokenLocker is Ownable, SystemStart {
         uint32 locked;
         // Currently unlocked balance (from expired locks, can be withdrawn)
         uint32 unlocked;
-        // Currently "frozen" balance. A frozen balance is equivalent to a `MAX_LOCK_WEEKS` lock,
+        // Currently "frozen" balance. A frozen balance is equivalent to a `MAX_LOCK_EPOCHS` lock,
         // where the lock weight does not decay weekly. An account may have a locked balance or a
         // frozen balance, never both at the same time.
         uint32 frozen;
@@ -49,7 +43,7 @@ contract TokenLocker is Ownable, SystemStart {
         // account has a non-zero token balance unlocking in that week, and so a non-zero value
         // at the same index in `accountWeeklyUnlocks`. We use this bitarray to reduce gas costs
         // when iterating over the weekly unlocks.
-        uint256[256] updateWeeks;
+        uint256[EPOCHS / 256 + 1] updateWeeks;
     }
 
     // structs used in function inputs
@@ -67,19 +61,19 @@ contract TokenLocker is Ownable, SystemStart {
     // be equal to the total number of locked tokens, as it does not include frozen accounts.
     uint32 public totalDecayRate;
     // Current week within `totalWeeklyWeights` and `totalWeeklyUnlocks`. When up-to-date
-    // this value is always equal to `getWeek()`
+    // this value is always equal to `getEpoch()`
     uint16 public totalUpdatedWeek;
 
     // week -> total lock weight
-    uint40[65535] totalWeeklyWeights;
+    uint40[EPOCHS] totalWeeklyWeights;
     // week -> tokens to unlock in this week
-    uint32[65535] totalWeeklyUnlocks;
+    uint32[EPOCHS] totalWeeklyUnlocks;
 
     // account -> week -> lock weight
-    mapping(address => uint40[65535]) accountWeeklyWeights;
+    mapping(address => uint40[EPOCHS]) accountWeeklyWeights;
 
     // account -> week -> token balance unlocking this week
-    mapping(address => uint32[65535]) accountWeeklyUnlocks;
+    mapping(address => uint32[EPOCHS]) accountWeeklyUnlocks;
 
     // account -> primary account data structure
     mapping(address => AccountData) accountLockData;
@@ -127,9 +121,9 @@ contract TokenLocker is Ownable, SystemStart {
 
         locked = accountData.locked;
         if (locked > 0) {
-            uint32[65535] storage weeklyUnlocks = accountWeeklyUnlocks[account];
+            uint32[EPOCHS] storage weeklyUnlocks = accountWeeklyUnlocks[account];
             uint256 accountWeek = accountData.week;
-            uint256 systemWeek = getWeek();
+            uint256 systemWeek = getEpoch();
 
             uint256 bitfield = accountData.updateWeeks[accountWeek / 256] >> (accountWeek % 256);
 
@@ -155,16 +149,16 @@ contract TokenLocker is Ownable, SystemStart {
         @notice Get the current lock weight for an account
      */
     function getAccountWeight(address account) external view returns (uint256) {
-        return getAccountWeightAt(account, getWeek());
+        return getAccountWeightAt(account, getEpoch());
     }
 
     /**
         @notice Get the lock weight for an account in a given week
      */
     function getAccountWeightAt(address account, uint256 week) public view returns (uint256) {
-        if (week > getWeek()) return 0;
-        uint32[65535] storage weeklyUnlocks = accountWeeklyUnlocks[account];
-        uint40[65535] storage weeklyWeights = accountWeeklyWeights[account];
+        if (week > getEpoch()) return 0;
+        uint32[EPOCHS] storage weeklyUnlocks = accountWeeklyUnlocks[account];
+        uint40[EPOCHS] storage weeklyWeights = accountWeeklyWeights[account];
         AccountData storage accountData = accountLockData[account];
 
         uint256 accountWeek = accountData.week;
@@ -208,13 +202,13 @@ contract TokenLocker is Ownable, SystemStart {
         frozenAmount = accountData.frozen;
         if (frozenAmount == 0) {
             if (minWeeks == 0) minWeeks = 1;
-            uint32[65535] storage unlocks = accountWeeklyUnlocks[account];
+            uint32[EPOCHS] storage unlocks = accountWeeklyUnlocks[account];
 
-            uint256 systemWeek = getWeek();
+            uint256 systemWeek = getEpoch();
             uint256 currentWeek = systemWeek + minWeeks;
-            uint256 maxLockWeek = systemWeek + MAX_LOCK_WEEKS;
+            uint256 maxLockWeek = systemWeek + MAX_LOCK_EPOCHS;
 
-            uint256[] memory unlockWeeks = new uint256[](MAX_LOCK_WEEKS);
+            uint256[] memory unlockWeeks = new uint256[](MAX_LOCK_EPOCHS);
             uint256 bitfield = accountData.updateWeeks[currentWeek / 256] >> (currentWeek % 256);
 
             uint256 length;
@@ -257,7 +251,7 @@ contract TokenLocker is Ownable, SystemStart {
         uint256 amountToWithdraw
     ) external view returns (uint256 amountWithdrawn, uint256 penaltyAmountPaid) {
         AccountData storage accountData = accountLockData[account];
-        uint32[65535] storage unlocks = accountWeeklyUnlocks[account];
+        uint32[EPOCHS] storage unlocks = accountWeeklyUnlocks[account];
         if (amountToWithdraw != type(uint256).max) amountToWithdraw *= lockToTokenRatio;
 
         // first we apply the unlocked balance without penalty
@@ -270,12 +264,12 @@ contract TokenLocker is Ownable, SystemStart {
         uint256 penaltyTotal;
 
         uint256 accountWeek = accountData.week;
-        uint256 systemWeek = getWeek();
+        uint256 systemWeek = getEpoch();
         uint256 offset = systemWeek - accountWeek;
         uint256 bitfield = accountData.updateWeeks[accountWeek / 256];
 
-        // `weeksToUnlock < MAX_LOCK_WEEKS` stops iteration prior to the final week
-        for (uint256 weeksToUnlock = 1; weeksToUnlock < MAX_LOCK_WEEKS; weeksToUnlock++) {
+        // `weeksToUnlock < MAX_LOCK_EPOCHS` stops iteration prior to the final week
+        for (uint256 weeksToUnlock = 1; weeksToUnlock < MAX_LOCK_EPOCHS; weeksToUnlock++) {
             accountWeek++;
 
             if (accountWeek % 256 == 0) {
@@ -288,15 +282,15 @@ contract TokenLocker is Ownable, SystemStart {
                 uint256 penaltyOnAmount = 0;
                 if (accountWeek > systemWeek) {
                     // only apply the penalty if the lock has not expired
-                    penaltyOnAmount = (lockAmount * (weeksToUnlock - offset)) / MAX_LOCK_WEEKS;
+                    penaltyOnAmount = (lockAmount * (weeksToUnlock - offset)) / MAX_LOCK_EPOCHS;
                 }
 
                 if (lockAmount - penaltyOnAmount > remaining) {
                     // after penalty, locked amount exceeds remaining required balance
                     // we can complete the withdrawal using only a portion of this lock
                     penaltyOnAmount =
-                        (remaining * MAX_LOCK_WEEKS) /
-                        (MAX_LOCK_WEEKS - (weeksToUnlock - offset)) -
+                        (remaining * MAX_LOCK_EPOCHS) /
+                        (MAX_LOCK_EPOCHS - (weeksToUnlock - offset)) -
                         remaining;
                     uint256 dust = ((penaltyOnAmount + remaining) % lockToTokenRatio);
                     if (dust > 0) penaltyOnAmount += lockToTokenRatio - dust;
@@ -322,14 +316,14 @@ contract TokenLocker is Ownable, SystemStart {
         @notice Get the current total lock weight
      */
     function getTotalWeight() external view returns (uint256) {
-        return getTotalWeightAt(getWeek());
+        return getTotalWeightAt(getEpoch());
     }
 
     /**
         @notice Get the total lock weight for a given week
      */
     function getTotalWeightAt(uint256 week) public view returns (uint256) {
-        uint256 systemWeek = getWeek();
+        uint256 systemWeek = getEpoch();
         if (week > systemWeek) return 0;
 
         uint32 updatedWeek = totalUpdatedWeek;
@@ -366,7 +360,7 @@ contract TokenLocker is Ownable, SystemStart {
              contract -> contract interactions.
      */
     function getTotalWeightWrite() public returns (uint256) {
-        uint256 week = getWeek();
+        uint256 week = getEpoch();
         uint32 rate = totalDecayRate;
         uint32 updatedWeek = totalUpdatedWeek;
         uint40 weight = totalWeeklyWeights[updatedWeek];
@@ -391,7 +385,7 @@ contract TokenLocker is Ownable, SystemStart {
 
     /**
         @notice Deposit tokens into the contract to create a new lock.
-        @dev A lock is created for a given number of weeks. Minimum 1, maximum `MAX_LOCK_WEEKS`.
+        @dev A lock is created for a given number of weeks. Minimum 1, maximum `MAX_LOCK_EPOCHS`.
              An account can have multiple locks active at the same time. The account's "lock weight"
              is calculated as the sum of [number of tokens] * [weeks until unlock] for all active
              locks. At the start of each new week, each lock's weeks until unlock is reduced by 1.
@@ -411,16 +405,16 @@ contract TokenLocker is Ownable, SystemStart {
     }
 
     function _lock(address _account, uint256 _amount, uint256 _weeks) internal {
-        require(_weeks <= MAX_LOCK_WEEKS, "Exceeds MAX_LOCK_WEEKS");
+        require(_weeks <= MAX_LOCK_EPOCHS, "Exceeds MAX_LOCK_EPOCHS");
         AccountData storage accountData = accountLockData[_account];
 
         uint256 accountWeight = _weeklyWeightWrite(_account);
         uint256 totalWeight = getTotalWeightWrite();
-        uint256 systemWeek = getWeek();
+        uint256 systemWeek = getEpoch();
         uint256 frozen = accountData.frozen;
         if (frozen > 0) {
             accountData.frozen = uint32(frozen + _amount);
-            _weeks = MAX_LOCK_WEEKS;
+            _weeks = MAX_LOCK_EPOCHS;
         } else {
             // disallow a 1 week lock in the final 3 days of the week
             if (_weeks == 1 && block.timestamp % 1 weeks > 4 days) _weeks = 2;
@@ -428,7 +422,7 @@ contract TokenLocker is Ownable, SystemStart {
             accountData.locked = uint32(accountData.locked + _amount);
             totalDecayRate = uint32(totalDecayRate + _amount);
 
-            uint32[65535] storage unlocks = accountWeeklyUnlocks[_account];
+            uint32[EPOCHS] storage unlocks = accountWeeklyUnlocks[_account];
             uint256 unlockWeek = systemWeek + _weeks;
             uint256 previous = unlocks[unlockWeek];
 
@@ -465,14 +459,14 @@ contract TokenLocker is Ownable, SystemStart {
         uint256 _newWeeks
     ) external notFrozen(msg.sender) returns (bool) {
         require(_weeks > 0, "Min 1 week");
-        require(_newWeeks <= MAX_LOCK_WEEKS, "Exceeds MAX_LOCK_WEEKS");
+        require(_newWeeks <= MAX_LOCK_EPOCHS, "Exceeds MAX_LOCK_EPOCHS");
         require(_weeks < _newWeeks, "newWeeks must be greater than weeks");
         require(_amount > 0, "Amount must be nonzero");
 
         AccountData storage accountData = accountLockData[msg.sender];
-        uint256 systemWeek = getWeek();
+        uint256 systemWeek = getEpoch();
         uint256 increase = (_newWeeks - _weeks) * _amount;
-        uint32[65535] storage unlocks = accountWeeklyUnlocks[msg.sender];
+        uint32[EPOCHS] storage unlocks = accountWeeklyUnlocks[msg.sender];
 
         // update and adjust account weight
         // current decay rate is unaffected when extending
@@ -517,11 +511,11 @@ contract TokenLocker is Ownable, SystemStart {
      */
     function lockMany(address _account, LockData[] calldata newLocks) external notFrozen(_account) returns (bool) {
         AccountData storage accountData = accountLockData[_account];
-        uint32[65535] storage unlocks = accountWeeklyUnlocks[_account];
+        uint32[EPOCHS] storage unlocks = accountWeeklyUnlocks[_account];
 
         // update account weight
         uint256 accountWeight = _weeklyWeightWrite(_account);
-        uint256 systemWeek = getWeek();
+        uint256 systemWeek = getEpoch();
 
         // copy maybe-updated bitfield entries to memory
         uint256[2] memory bitfield = [
@@ -539,7 +533,7 @@ contract TokenLocker is Ownable, SystemStart {
             uint256 week = newLocks[i].weeksToUnlock;
             require(amount > 0, "Amount must be nonzero");
             require(week > 0, "Min 1 week");
-            require(week <= MAX_LOCK_WEEKS, "Exceeds MAX_LOCK_WEEKS");
+            require(week <= MAX_LOCK_EPOCHS, "Exceeds MAX_LOCK_EPOCHS");
 
             // disallow a 1 week lock in the final 3 days of the week
             if (week == 1 && block.timestamp % 1 weeks > 4 days) week = 2;
@@ -584,11 +578,11 @@ contract TokenLocker is Ownable, SystemStart {
      */
     function extendMany(ExtendLockData[] calldata newExtendLocks) external notFrozen(msg.sender) returns (bool) {
         AccountData storage accountData = accountLockData[msg.sender];
-        uint32[65535] storage unlocks = accountWeeklyUnlocks[msg.sender];
+        uint32[EPOCHS] storage unlocks = accountWeeklyUnlocks[msg.sender];
 
         // update account weight
         uint256 accountWeight = _weeklyWeightWrite(msg.sender);
-        uint256 systemWeek = getWeek();
+        uint256 systemWeek = getEpoch();
 
         // copy maybe-updated bitfield entries to memory
         uint256[2] memory bitfield = [
@@ -605,7 +599,7 @@ contract TokenLocker is Ownable, SystemStart {
             uint256 newWeeks = newExtendLocks[i].newWeeks;
 
             require(oldWeeks > 0, "Min 1 week");
-            require(newWeeks <= MAX_LOCK_WEEKS, "Exceeds MAX_LOCK_WEEKS");
+            require(newWeeks <= MAX_LOCK_EPOCHS, "Exceeds MAX_LOCK_EPOCHS");
             require(oldWeeks < newWeeks, "newWeeks must be greater than weeks");
             require(amount > 0, "Amount must be nonzero");
 
@@ -652,7 +646,7 @@ contract TokenLocker is Ownable, SystemStart {
      */
     function freeze() external notFrozen(msg.sender) {
         AccountData storage accountData = accountLockData[msg.sender];
-        uint32[65535] storage unlocks = accountWeeklyUnlocks[msg.sender];
+        uint32[EPOCHS] storage unlocks = accountWeeklyUnlocks[msg.sender];
 
         uint256 accountWeight = _weeklyWeightWrite(msg.sender);
         uint256 totalWeight = getTotalWeightWrite();
@@ -664,9 +658,9 @@ contract TokenLocker is Ownable, SystemStart {
         accountData.frozen = uint32(locked);
         accountData.locked = 0;
 
-        uint256 systemWeek = getWeek();
-        accountWeeklyWeights[msg.sender][systemWeek] = uint40(locked * MAX_LOCK_WEEKS);
-        totalWeeklyWeights[systemWeek] = uint40(totalWeight - accountWeight + locked * MAX_LOCK_WEEKS);
+        uint256 systemWeek = getEpoch();
+        accountWeeklyWeights[msg.sender][systemWeek] = uint40(locked * MAX_LOCK_EPOCHS);
+        totalWeeklyWeights[systemWeek] = uint40(totalWeight - accountWeight + locked * MAX_LOCK_EPOCHS);
 
         // use bitfield to iterate acount unlocks and subtract them from the total unlocks
         uint256 bitfield = accountData.updateWeeks[systemWeek / 256] >> (systemWeek % 256);
@@ -705,7 +699,7 @@ contract TokenLocker is Ownable, SystemStart {
      */
     function unfreeze(bool keepIncentivesVote) external {
         AccountData storage accountData = accountLockData[msg.sender];
-        uint32[65535] storage unlocks = accountWeeklyUnlocks[msg.sender];
+        uint32[EPOCHS] storage unlocks = accountWeeklyUnlocks[msg.sender];
         uint256 frozen = accountData.frozen;
         require(frozen > 0, "Locks already unfrozen");
 
@@ -721,9 +715,9 @@ contract TokenLocker is Ownable, SystemStart {
         accountData.locked = uint32(frozen);
         accountData.frozen = 0;
 
-        uint256 systemWeek = getWeek();
+        uint256 systemWeek = getEpoch();
 
-        uint256 unlockWeek = systemWeek + MAX_LOCK_WEEKS;
+        uint256 unlockWeek = systemWeek + MAX_LOCK_EPOCHS;
 
         // modify weekly unlocks and unlock bitfield
         unlocks[unlockWeek] = uint32(frozen);
@@ -763,7 +757,7 @@ contract TokenLocker is Ownable, SystemStart {
              The penalty starts at 100% and decays linearly based on the number of weeks
              remaining until the tokens unlock. The exact calculation used is:
 
-             [total amount] * [weeks to unlock] / MAX_LOCK_WEEKS = [penalty amount]
+             [total amount] * [weeks to unlock] / MAX_LOCK_EPOCHS = [penalty amount]
 
         @param amountToWithdraw Amount to withdraw, divided by `lockToTokenRatio`. This
                                 is the same number of tokens that will be received; the
@@ -771,14 +765,14 @@ contract TokenLocker is Ownable, SystemStart {
                                 caller's locked balances are insufficient to cover both
                                 the withdrawal and penalty amounts. Setting this value as
                                 `type(uint256).max` withdrawals the entire available locked
-                                balance, excluding any lock at `MAX_LOCK_WEEKS` as the
+                                balance, excluding any lock at `MAX_LOCK_EPOCHS` as the
                                 penalty on this lock would be 100%.
         @return uint256 Amount of tokens withdrawn
      */
     function withdrawWithPenalty(uint256 amountToWithdraw) external notFrozen(msg.sender) returns (uint256) {
         require(penaltyWithdrawalsEnabled, "Penalty withdrawals are disabled");
         AccountData storage accountData = accountLockData[msg.sender];
-        uint32[65535] storage unlocks = accountWeeklyUnlocks[msg.sender];
+        uint32[EPOCHS] storage unlocks = accountWeeklyUnlocks[msg.sender];
         uint256 weight = _weeklyWeightWrite(msg.sender);
         if (amountToWithdraw != type(uint256).max) amountToWithdraw *= lockToTokenRatio;
 
@@ -799,13 +793,13 @@ contract TokenLocker is Ownable, SystemStart {
             accountData.unlocked = 0;
         }
 
-        uint256 systemWeek = getWeek();
+        uint256 systemWeek = getEpoch();
         uint256 bitfield = accountData.updateWeeks[systemWeek / 256];
         uint256 penaltyTotal;
         uint256 decreasedWeight;
 
-        // `weeksToUnlock < MAX_LOCK_WEEKS` stops iteration prior to the final week
-        for (uint256 weeksToUnlock = 1; weeksToUnlock < MAX_LOCK_WEEKS; weeksToUnlock++) {
+        // `weeksToUnlock < MAX_LOCK_EPOCHS` stops iteration prior to the final week
+        for (uint256 weeksToUnlock = 1; weeksToUnlock < MAX_LOCK_EPOCHS; weeksToUnlock++) {
             systemWeek++;
             if (systemWeek % 256 == 0) {
                 accountData.updateWeeks[systemWeek / 256 - 1] = 0;
@@ -814,12 +808,12 @@ contract TokenLocker is Ownable, SystemStart {
 
             if ((bitfield >> (systemWeek % 256)) & uint256(1) == 1) {
                 uint256 lockAmount = unlocks[systemWeek] * lockToTokenRatio;
-                uint256 penaltyOnAmount = (lockAmount * weeksToUnlock) / MAX_LOCK_WEEKS;
+                uint256 penaltyOnAmount = (lockAmount * weeksToUnlock) / MAX_LOCK_EPOCHS;
 
                 if (lockAmount - penaltyOnAmount > remaining) {
                     // after penalty, locked amount exceeds remaining required balance
                     // we can complete the withdrawal using only a portion of this lock
-                    penaltyOnAmount = (remaining * MAX_LOCK_WEEKS) / (MAX_LOCK_WEEKS - weeksToUnlock) - remaining;
+                    penaltyOnAmount = (remaining * MAX_LOCK_EPOCHS) / (MAX_LOCK_EPOCHS - weeksToUnlock) - remaining;
                     uint256 dust = ((penaltyOnAmount + remaining) % lockToTokenRatio);
                     if (dust > 0) penaltyOnAmount += lockToTokenRatio - dust;
                     penaltyTotal += penaltyOnAmount;
@@ -855,7 +849,7 @@ contract TokenLocker is Ownable, SystemStart {
 
         accountData.locked -= uint32((amountToWithdraw + penaltyTotal - unlocked) / lockToTokenRatio);
         totalDecayRate -= uint32((amountToWithdraw + penaltyTotal - unlocked) / lockToTokenRatio);
-        systemWeek = getWeek();
+        systemWeek = getEpoch();
         accountWeeklyWeights[msg.sender][systemWeek] = uint40(weight - decreasedWeight);
         totalWeeklyWeights[systemWeek] = uint40(getTotalWeightWrite() - decreasedWeight);
 
@@ -871,10 +865,10 @@ contract TokenLocker is Ownable, SystemStart {
      */
     function _weeklyWeightWrite(address account) internal returns (uint256 weight) {
         AccountData storage accountData = accountLockData[account];
-        uint32[65535] storage weeklyUnlocks = accountWeeklyUnlocks[account];
-        uint40[65535] storage weeklyWeights = accountWeeklyWeights[account];
+        uint32[EPOCHS] storage weeklyUnlocks = accountWeeklyUnlocks[account];
+        uint40[EPOCHS] storage weeklyWeights = accountWeeklyWeights[account];
 
-        uint256 systemWeek = getWeek();
+        uint256 systemWeek = getEpoch();
         uint256 accountWeek = accountData.week;
         weight = weeklyWeights[accountWeek];
         if (accountWeek == systemWeek) return weight;
