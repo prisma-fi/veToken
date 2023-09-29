@@ -1,0 +1,8 @@
+compiler:
+  solc:
+    evm_version: paris
+    remappings:
+      - "@openzeppelin=OpenZeppelin/openzeppelin-contracts@4.8.0"
+
+dependencies:
+  - OpenZeppelin/openzeppelin-contracts@4.8.0
