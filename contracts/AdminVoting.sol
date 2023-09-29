@@ -35,6 +35,7 @@ contract AdminVoting is DelegatedOps, SystemStart {
     );
     event ProposalCreationMinPctSet(uint256 weight);
     event ProposalPassingPctSet(uint256 pct);
+    event GuardianSet(address guardian);
 
     struct Proposal {
         uint16 week; // week which vote weights are based upon
@@ -58,7 +59,7 @@ contract AdminVoting is DelegatedOps, SystemStart {
     uint256 public constant SET_GUARDIAN_PASSING_PCT = 5010;
 
     ITokenLocker public immutable tokenLocker;
-    address public immutable prismaCore;
+    address public guardian;
 
     Proposal[] proposalData;
     mapping(uint256 => Action[]) proposalPayloads;
@@ -75,12 +76,14 @@ contract AdminVoting is DelegatedOps, SystemStart {
     // percent of total weight that must vote for a proposal before it can be executed
     uint256 public passingPct;
 
-    constructor(ITokenLocker _tokenLocker, uint256 _minCreateProposalPct, uint256 _passingPct) {
+    constructor(ITokenLocker _tokenLocker, address _guardian, uint256 _minCreateProposalPct, uint256 _passingPct) {
         tokenLocker = _tokenLocker;
-        prismaCore = address(0); // TODO
+        guardian = _guardian;
 
         minCreateProposalPct = _minCreateProposalPct;
         passingPct = _passingPct;
+
+        emit GuardianSet(_guardian);
     }
 
     /**
@@ -234,7 +237,7 @@ contract AdminVoting is DelegatedOps, SystemStart {
         @param id Proposal ID
      */
     function cancelProposal(uint256 id) external {
-        // require(msg.sender == prismaCore.guardian(), "Only guardian can cancel proposals");   TODO
+        require(msg.sender == guardian, "Only guardian can cancel proposals");
         require(id < proposalData.length, "Invalid ID");
 
         Action[] storage payload = proposalPayloads[id];
@@ -298,15 +301,28 @@ contract AdminVoting is DelegatedOps, SystemStart {
         return true;
     }
 
+    /**
+     * @notice Set the guardian address
+       @dev Only callable via a passing proposal that includes a call
+             to this contract and function within it's payload
+     * @param _guardian Guardian address
+     */
+    function setGuardian(address _guardian) external returns (bool) {
+        require(msg.sender == address(this), "Only callable via proposal");
+        guardian = _guardian;
+        emit GuardianSet(_guardian);
+        return true;
+    }
+
     function _isSetGuardianPayload(uint256 payloadLength, Action memory action) internal view returns (bool) {
-        if (payloadLength == 1 && action.target == address(prismaCore)) {
+        if (payloadLength == 1 && action.target == address(this)) {
             bytes memory data = action.data;
             // Extract the call sig from payload data
             bytes4 sig;
             assembly {
                 sig := mload(add(data, 0x20))
             }
-            return true; // sig == IPrismaCore.setGuardian.selector;   TODO
+            return sig == AdminVoting.setGuardian.selector;
         }
         return false;
     }
