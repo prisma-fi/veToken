@@ -37,6 +37,8 @@ contract TokenLocker is Ownable, BaseConfig {
         // where the lock weight does not decay over time. An account may have a locked balance or a
         // frozen balance, never both at the same time.
         uint32 frozen;
+        // Boolean indicating if the account is currently frozen.
+        bool isFrozen;
         // Current epoch within `accountEpochUnlocks`. Lock durations decay as this value increases.
         uint16 epoch;
         // Array of bitfields, where each bit represents 1 epoch. A bit is set to true when the
@@ -94,7 +96,7 @@ contract TokenLocker is Ownable, BaseConfig {
     }
 
     modifier notFrozen(address account) {
-        require(accountLockData[account].frozen == 0, "Lock is frozen");
+        require(!accountLockData[account].isFrozen, "Lock is frozen");
         _;
     }
 
@@ -143,6 +145,10 @@ contract TokenLocker is Ownable, BaseConfig {
             }
         }
         return (locked, unlocked);
+    }
+
+    function getAccountIsFrozen(address account) external view returns (bool isFrozen) {
+        return accountLockData[account].isFrozen;
     }
 
     /**
@@ -411,9 +417,8 @@ contract TokenLocker is Ownable, BaseConfig {
         uint256 accountWeight = _epochWeightWrite(_account);
         uint256 totalWeight = getTotalWeightWrite();
         uint256 systemEpoch = getEpoch();
-        uint256 frozen = accountData.frozen;
-        if (frozen > 0) {
-            accountData.frozen = uint32(frozen + _amount);
+        if (accountData.isFrozen) {
+            accountData.frozen += uint32(_amount);
             _epochs = MAX_LOCK_EPOCHS;
         } else {
             // disallow a 1 epoch lock in the final half of the epoch
@@ -653,33 +658,36 @@ contract TokenLocker is Ownable, BaseConfig {
 
         // remove account locked balance from the total decay rate
         uint256 locked = accountData.locked;
-        require(locked > 0, "No locked balance");
-        totalDecayRate = uint32(totalDecayRate - locked);
-        accountData.frozen = uint32(locked);
-        accountData.locked = 0;
 
-        uint256 systemEpoch = getEpoch();
-        accountEpochWeights[msg.sender][systemEpoch] = uint40(locked * MAX_LOCK_EPOCHS);
-        totalEpochWeights[systemEpoch] = uint40(totalWeight - accountWeight + locked * MAX_LOCK_EPOCHS);
+        if (locked > 0) {
+            totalDecayRate = uint32(totalDecayRate - locked);
+            accountData.frozen = uint32(locked);
+            accountData.locked = 0;
 
-        // use bitfield to iterate acount unlocks and subtract them from the total unlocks
-        uint256 bitfield = accountData.updateEpochs[systemEpoch / 256] >> (systemEpoch % 256);
-        while (locked > 0) {
-            systemEpoch++;
-            if (systemEpoch % 256 == 0) {
-                bitfield = accountData.updateEpochs[systemEpoch / 256];
-                accountData.updateEpochs[(systemEpoch / 256) - 1] = 0;
-            } else {
-                bitfield = bitfield >> 1;
+            uint256 systemEpoch = getEpoch();
+            accountEpochWeights[msg.sender][systemEpoch] = uint40(locked * MAX_LOCK_EPOCHS);
+            totalEpochWeights[systemEpoch] = uint40(totalWeight - accountWeight + locked * MAX_LOCK_EPOCHS);
+
+            // use bitfield to iterate acount unlocks and subtract them from the total unlocks
+            uint256 bitfield = accountData.updateEpochs[systemEpoch / 256] >> (systemEpoch % 256);
+            while (locked > 0) {
+                systemEpoch++;
+                if (systemEpoch % 256 == 0) {
+                    bitfield = accountData.updateEpochs[systemEpoch / 256];
+                    accountData.updateEpochs[(systemEpoch / 256) - 1] = 0;
+                } else {
+                    bitfield = bitfield >> 1;
+                }
+                if (bitfield & uint256(1) == 1) {
+                    uint32 amount = unlocks[systemEpoch];
+                    unlocks[systemEpoch] = 0;
+                    totalEpochUnlocks[systemEpoch] -= amount;
+                    locked -= amount;
+                }
             }
-            if (bitfield & uint256(1) == 1) {
-                uint32 amount = unlocks[systemEpoch];
-                unlocks[systemEpoch] = 0;
-                totalEpochUnlocks[systemEpoch] -= amount;
-                locked -= amount;
-            }
+            accountData.updateEpochs[systemEpoch / 256] = 0;
         }
-        accountData.updateEpochs[systemEpoch / 256] = 0;
+        accountData.isFrozen = true;
         emit LocksFrozen(msg.sender, locked);
     }
 
@@ -700,31 +708,34 @@ contract TokenLocker is Ownable, BaseConfig {
     function unfreeze(bool keepIncentivesVote) external {
         AccountData storage accountData = accountLockData[msg.sender];
         uint32[65535] storage unlocks = accountEpochUnlocks[msg.sender];
+        require(accountData.isFrozen, "Locks already unfrozen");
+
         uint256 frozen = accountData.frozen;
-        require(frozen > 0, "Locks already unfrozen");
+        if (frozen > 0) {
+            // unfreeze the caller's registered vote weights
+            incentiveVoter.unfreeze(msg.sender, keepIncentivesVote);
 
-        // unfreeze the caller's registered vote weights
-        incentiveVoter.unfreeze(msg.sender, keepIncentivesVote);
+            // update account weights and get the current account epoch
+            _epochWeightWrite(msg.sender);
+            getTotalWeightWrite();
 
-        // update account weights and get the current account epoch
-        _epochWeightWrite(msg.sender);
-        getTotalWeightWrite();
+            // add account decay to the total decay rate
+            totalDecayRate = uint32(totalDecayRate + frozen);
+            accountData.locked = uint32(frozen);
+            accountData.frozen = 0;
 
-        // add account decay to the total decay rate
-        totalDecayRate = uint32(totalDecayRate + frozen);
-        accountData.locked = uint32(frozen);
-        accountData.frozen = 0;
+            uint256 systemEpoch = getEpoch();
 
-        uint256 systemEpoch = getEpoch();
+            uint256 unlockEpoch = systemEpoch + MAX_LOCK_EPOCHS;
 
-        uint256 unlockEpoch = systemEpoch + MAX_LOCK_EPOCHS;
-
-        // modify epoch unlocks and unlock bitfield
-        unlocks[unlockEpoch] = uint32(frozen);
-        totalEpochUnlocks[unlockEpoch] += uint32(frozen);
-        uint256 idx = unlockEpoch / 256;
-        uint256 bitfield = accountData.updateEpochs[idx] | (uint256(1) << (unlockEpoch % 256));
-        accountData.updateEpochs[idx] = bitfield;
+            // modify epoch unlocks and unlock bitfield
+            unlocks[unlockEpoch] = uint32(frozen);
+            totalEpochUnlocks[unlockEpoch] += uint32(frozen);
+            uint256 idx = unlockEpoch / 256;
+            uint256 bitfield = accountData.updateEpochs[idx] | (uint256(1) << (unlockEpoch % 256));
+            accountData.updateEpochs[idx] = bitfield;
+        }
+        accountData.isFrozen = false;
         emit LocksUnfrozen(msg.sender, frozen);
     }
 
