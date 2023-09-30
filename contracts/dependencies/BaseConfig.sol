@@ -17,13 +17,18 @@ contract BaseConfig {
     // Whole number representing 100% in the contracts. Must be less than 65535.
     uint256 public constant MAX_PCT = 10000;
 
+    // Number of seconds to subtract when calculating `START_TIME`. With an epoch length of
+    // one week, an offset of 4 days means that a new epoch begins every Sunday at 00:00:00 UTC.
+    uint256 private constant START_OFFSET = 4 days;
+
     uint256 public immutable START_TIME;
 
     constructor() {
         require(MAX_LOCK_EPOCHS < 256, "BaseConfig: MAX_LOCK_EPOCHS >= 256");
         require(MAX_PCT < 65535, "BaseConfig: MAX_PCT >= 65535");
         require(EPOCH_LENGTH * 65535 >= 52 weeks * 100, "BaseConfig: EPOCH_LENGTH too small");
-        START_TIME = (block.timestamp / EPOCH_LENGTH) * EPOCH_LENGTH;
+        require(START_OFFSET < EPOCH_LENGTH, "BaseConfig: START_OFFSET >= EPOCH_LENGTH");
+        START_TIME = (block.timestamp / EPOCH_LENGTH) * EPOCH_LENGTH - START_OFFSET;
     }
 
     function getEpoch() public view returns (uint256 epoch) {
