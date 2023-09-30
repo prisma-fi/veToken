@@ -9,7 +9,7 @@ import "./interfaces/IIncentiveVoting.sol";
 
 /**
     @title Token Locker
-    @author Prisma Finance team
+    @author Prisma Finance
     @notice Tokens can be locked in this contract to receive "lock weight",
             which is used within `AdminVoting` and `IncentiveVoting` to vote on
             core protocol operations.
@@ -28,6 +28,7 @@ contract TokenLocker is Ownable, BaseConfig {
     IIncentiveVoting public immutable incentiveVoter;
 
     bool public penaltyWithdrawalsEnabled;
+    address public feeReceiver;
 
     struct AccountData {
         // Currently locked balance. Each epoch the lock weight decays by this amount.
@@ -89,9 +90,10 @@ contract TokenLocker is Ownable, BaseConfig {
     event LocksUnfrozen(address indexed account, uint256 amount);
     event LocksWithdrawn(address indexed account, uint256 withdrawn, uint256 penalty);
 
-    constructor(IERC20 _token, IIncentiveVoting _voter, uint256 _lockToTokenRatio) {
+    constructor(IERC20 _token, IIncentiveVoting _voter, address _feeReceiver, uint256 _lockToTokenRatio) {
         lockToken = _token;
         incentiveVoter = _voter;
+        feeReceiver = _feeReceiver;
 
         lockToTokenRatio = _lockToTokenRatio;
     }
@@ -106,6 +108,14 @@ contract TokenLocker is Ownable, BaseConfig {
      */
     function setPenaltyWithdrawalsEnabled(bool _enabled) external onlyOwner returns (bool) {
         penaltyWithdrawalsEnabled = _enabled;
+        return true;
+    }
+
+    /**
+        @notice Set the address where early-exit penalty fees are sent
+     */
+    function setFeeReceiver(address _receiver) external onlyOwner returns (bool) {
+        feeReceiver = _receiver;
         return true;
     }
 
@@ -866,7 +876,7 @@ contract TokenLocker is Ownable, BaseConfig {
         totalEpochWeights[systemEpoch] = uint40(getTotalWeightWrite() - decreasedWeight);
 
         lockToken.transfer(msg.sender, amountToWithdraw);
-        // lockToken.transfer(prismaCore.feeReceiver(), penaltyTotal);
+        lockToken.transfer(feeReceiver, penaltyTotal);
         emit LocksWithdrawn(msg.sender, amountToWithdraw, penaltyTotal);
 
         return amountToWithdraw;
