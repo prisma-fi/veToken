@@ -53,17 +53,17 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
 
     uint256 public receiverCount;
     // id -> receiver data
-    uint32[EPOCHS] public receiverDecayRate;
-    uint16[EPOCHS] public receiverUpdatedEpoch;
+    uint32[65535] public receiverDecayRate;
+    uint16[65535] public receiverUpdatedEpoch;
     // id -> epoch -> absolute vote weight
-    uint40[EPOCHS][EPOCHS] receiverEpochWeights;
+    uint40[65535][65535] receiverEpochWeights;
     // id -> epoch -> registered lock weight that is lost
-    uint32[EPOCHS][EPOCHS] public receiverEpochUnlocks;
+    uint32[65535][65535] public receiverEpochUnlocks;
 
     uint32 public totalDecayRate;
     uint16 public totalUpdatedEpoch;
-    uint40[EPOCHS] totalEpochWeights;
-    uint32[EPOCHS] public totalEpochUnlocks;
+    uint40[65535] totalEpochWeights;
+    uint32[65535] public totalEpochUnlocks;
 
     // emitted each time an account's lock weight is registered
     event AccountWeightRegistered(

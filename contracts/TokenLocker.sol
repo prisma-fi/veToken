@@ -43,7 +43,7 @@ contract TokenLocker is Ownable, BaseConfig {
         // account has a non-zero token balance unlocking in that epoch, and so a non-zero value
         // at the same index in `accountEpochUnlocks`. We use this bitarray to reduce gas costs
         // when iterating over the epoch unlocks.
-        uint256[EPOCHS / 256 + 1] updateEpochs;
+        uint256[256] updateEpochs;
     }
 
     // structs used in function inputs
@@ -65,15 +65,15 @@ contract TokenLocker is Ownable, BaseConfig {
     uint16 public totalUpdatedEpoch;
 
     // epoch -> total lock weight
-    uint40[EPOCHS] totalEpochWeights;
+    uint40[65535] totalEpochWeights;
     // epoch -> tokens to unlock in this epoch
-    uint32[EPOCHS] totalEpochUnlocks;
+    uint32[65535] totalEpochUnlocks;
 
     // account -> epoch -> lock weight
-    mapping(address => uint40[EPOCHS]) accountEpochWeights;
+    mapping(address => uint40[65535]) accountEpochWeights;
 
     // account -> epoch -> token balance unlocking this epoch
-    mapping(address => uint32[EPOCHS]) accountEpochUnlocks;
+    mapping(address => uint32[65535]) accountEpochUnlocks;
 
     // account -> primary account data structure
     mapping(address => AccountData) accountLockData;
@@ -121,7 +121,7 @@ contract TokenLocker is Ownable, BaseConfig {
 
         locked = accountData.locked;
         if (locked > 0) {
-            uint32[EPOCHS] storage epochUnlocks = accountEpochUnlocks[account];
+            uint32[65535] storage epochUnlocks = accountEpochUnlocks[account];
             uint256 accountEpoch = accountData.epoch;
             uint256 systemEpoch = getEpoch();
 
@@ -157,8 +157,8 @@ contract TokenLocker is Ownable, BaseConfig {
      */
     function getAccountWeightAt(address account, uint256 epoch) public view returns (uint256) {
         if (epoch > getEpoch()) return 0;
-        uint32[EPOCHS] storage epochUnlocks = accountEpochUnlocks[account];
-        uint40[EPOCHS] storage epochWeights = accountEpochWeights[account];
+        uint32[65535] storage epochUnlocks = accountEpochUnlocks[account];
+        uint40[65535] storage epochWeights = accountEpochWeights[account];
         AccountData storage accountData = accountLockData[account];
 
         uint256 accountEpoch = accountData.epoch;
@@ -202,7 +202,7 @@ contract TokenLocker is Ownable, BaseConfig {
         frozenAmount = accountData.frozen;
         if (frozenAmount == 0) {
             if (minEpochs == 0) minEpochs = 1;
-            uint32[EPOCHS] storage unlocks = accountEpochUnlocks[account];
+            uint32[65535] storage unlocks = accountEpochUnlocks[account];
 
             uint256 systemEpoch = getEpoch();
             uint256 currentEpoch = systemEpoch + minEpochs;
@@ -251,7 +251,7 @@ contract TokenLocker is Ownable, BaseConfig {
         uint256 amountToWithdraw
     ) external view returns (uint256 amountWithdrawn, uint256 penaltyAmountPaid) {
         AccountData storage accountData = accountLockData[account];
-        uint32[EPOCHS] storage unlocks = accountEpochUnlocks[account];
+        uint32[65535] storage unlocks = accountEpochUnlocks[account];
         if (amountToWithdraw != type(uint256).max) amountToWithdraw *= lockToTokenRatio;
 
         // first we apply the unlocked balance without penalty
@@ -422,7 +422,7 @@ contract TokenLocker is Ownable, BaseConfig {
             accountData.locked = uint32(accountData.locked + _amount);
             totalDecayRate = uint32(totalDecayRate + _amount);
 
-            uint32[EPOCHS] storage unlocks = accountEpochUnlocks[_account];
+            uint32[65535] storage unlocks = accountEpochUnlocks[_account];
             uint256 unlockEpoch = systemEpoch + _epochs;
             uint256 previous = unlocks[unlockEpoch];
 
@@ -466,7 +466,7 @@ contract TokenLocker is Ownable, BaseConfig {
         AccountData storage accountData = accountLockData[msg.sender];
         uint256 systemEpoch = getEpoch();
         uint256 increase = (_newEpochs - _epochs) * _amount;
-        uint32[EPOCHS] storage unlocks = accountEpochUnlocks[msg.sender];
+        uint32[65535] storage unlocks = accountEpochUnlocks[msg.sender];
 
         // update and adjust account weight
         // current decay rate is unaffected when extending
@@ -511,7 +511,7 @@ contract TokenLocker is Ownable, BaseConfig {
      */
     function lockMany(address _account, LockData[] calldata newLocks) external notFrozen(_account) returns (bool) {
         AccountData storage accountData = accountLockData[_account];
-        uint32[EPOCHS] storage unlocks = accountEpochUnlocks[_account];
+        uint32[65535] storage unlocks = accountEpochUnlocks[_account];
 
         // update account weight
         uint256 accountWeight = _epochWeightWrite(_account);
@@ -578,7 +578,7 @@ contract TokenLocker is Ownable, BaseConfig {
      */
     function extendMany(ExtendLockData[] calldata newExtendLocks) external notFrozen(msg.sender) returns (bool) {
         AccountData storage accountData = accountLockData[msg.sender];
-        uint32[EPOCHS] storage unlocks = accountEpochUnlocks[msg.sender];
+        uint32[65535] storage unlocks = accountEpochUnlocks[msg.sender];
 
         // update account weight
         uint256 accountWeight = _epochWeightWrite(msg.sender);
@@ -646,7 +646,7 @@ contract TokenLocker is Ownable, BaseConfig {
      */
     function freeze() external notFrozen(msg.sender) {
         AccountData storage accountData = accountLockData[msg.sender];
-        uint32[EPOCHS] storage unlocks = accountEpochUnlocks[msg.sender];
+        uint32[65535] storage unlocks = accountEpochUnlocks[msg.sender];
 
         uint256 accountWeight = _epochWeightWrite(msg.sender);
         uint256 totalWeight = getTotalWeightWrite();
@@ -699,7 +699,7 @@ contract TokenLocker is Ownable, BaseConfig {
      */
     function unfreeze(bool keepIncentivesVote) external {
         AccountData storage accountData = accountLockData[msg.sender];
-        uint32[EPOCHS] storage unlocks = accountEpochUnlocks[msg.sender];
+        uint32[65535] storage unlocks = accountEpochUnlocks[msg.sender];
         uint256 frozen = accountData.frozen;
         require(frozen > 0, "Locks already unfrozen");
 
@@ -772,7 +772,7 @@ contract TokenLocker is Ownable, BaseConfig {
     function withdrawWithPenalty(uint256 amountToWithdraw) external notFrozen(msg.sender) returns (uint256) {
         require(penaltyWithdrawalsEnabled, "Penalty withdrawals are disabled");
         AccountData storage accountData = accountLockData[msg.sender];
-        uint32[EPOCHS] storage unlocks = accountEpochUnlocks[msg.sender];
+        uint32[65535] storage unlocks = accountEpochUnlocks[msg.sender];
         uint256 weight = _epochWeightWrite(msg.sender);
         if (amountToWithdraw != type(uint256).max) amountToWithdraw *= lockToTokenRatio;
 
@@ -865,8 +865,8 @@ contract TokenLocker is Ownable, BaseConfig {
      */
     function _epochWeightWrite(address account) internal returns (uint256 weight) {
         AccountData storage accountData = accountLockData[account];
-        uint32[EPOCHS] storage epochUnlocks = accountEpochUnlocks[account];
-        uint40[EPOCHS] storage epochWeights = accountEpochWeights[account];
+        uint32[65535] storage epochUnlocks = accountEpochUnlocks[account];
+        uint40[65535] storage epochWeights = accountEpochWeights[account];
 
         uint256 systemEpoch = getEpoch();
         uint256 accountEpoch = accountData.epoch;
