@@ -8,8 +8,9 @@ import "./dependencies/BaseConfig.sol";
 import "./interfaces/IIncentiveVoting.sol";
 
 /**
-    @title Prisma Token Locker
-    @notice PRISMA tokens can be locked in this contract to receive "lock weight",
+    @title Token Locker
+    @author Prisma Finance team
+    @notice Tokens can be locked in this contract to receive "lock weight",
             which is used within `AdminVoting` and `IncentiveVoting` to vote on
             core protocol operations.
  */

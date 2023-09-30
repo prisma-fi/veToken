@@ -8,10 +8,11 @@ import "./dependencies/BaseConfig.sol";
 import "./interfaces/ITokenLocker.sol";
 
 /**
-    @title Prisma DAO Admin Voter
-    @notice Primary ownership contract for all Prisma contracts. Allows executing
-            arbitrary function calls only after a required percentage of PRISMA
-            lockers have signalled in favor of performing the action.
+    @title DAO Admin Voter
+    @author Prisma Finance
+    @notice Ownership contract that maybe be used for some or all protocol contracts.
+            Allows executing arbitrary function calls only after a required percentage
+            of token lockers have signalled in favor of performing the action.
  */
 contract AdminVoting is DelegatedOps, BaseConfig {
     using Address for address;
@@ -159,8 +160,7 @@ contract AdminVoting is DelegatedOps, BaseConfig {
         uint256 accountWeight = tokenLocker.getAccountWeightAt(account, epoch);
         require(accountWeight >= minCreateProposalWeight(), "Not enough weight to propose");
 
-        // if the only action is `prismaCore.setGuardian()`, use
-        // `SET_GUARDIAN_PASSING_PCT` instead of `passingPct`
+        // if the only action is `setGuardian()`, use `SET_GUARDIAN_PASSING_PCT` instead of `passingPct`
         uint256 _passingPct;
         bool isSetGuardianPayload = _isSetGuardianPayload(payload.length, payload[0]);
         if (isSetGuardianPayload) {

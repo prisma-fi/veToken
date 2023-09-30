@@ -8,12 +8,11 @@ import "./interfaces/ITokenLocker.sol";
 import "./dependencies/BaseConfig.sol";
 
 /**
-    @title Prisma Incentive Voting
-    @notice Users with PRISMA balances locked in `TokenLocker` may register their
+    @title Incentive Voting
+    @author Prisma Finance
+    @notice Users with token balances locked in `TokenLocker` may register their
             lock weights in this contract, and use this weight to vote on where
-            new PRISMA emissions will be released in the following epoch.
-
-            Conceptually, incentive voting functions similarly to Curve's gauge weight voting.
+            new emissions will be released in the following epoch.
  */
 contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
     ITokenLocker public immutable tokenLocker;
