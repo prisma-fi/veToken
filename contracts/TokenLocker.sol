@@ -16,13 +16,13 @@ import "./interfaces/IIncentiveVoting.sol";
  */
 contract TokenLocker is Ownable, BaseConfig {
     // Multiplier applied during token deposits and withdrawals. A balance within this
-    // contract corresponds to a deposit of `balance * lockToTokenRatio` tokens. Balances
+    // contract corresponds to a deposit of `balance * LOCK_TO_TOKEN_RATIO` tokens. Balances
     // in this contract are stored as `uint32`, so the invariant:
     //
-    // `lockToken.totalSupply() <= type(uint32).max * lockToTokenRatio`
+    // `lockToken.totalSupply() <= type(uint32).max * LOCK_TO_TOKEN_RATIO`
     //
     // cannot be violated or the system could break due to overflow.
-    uint256 public immutable lockToTokenRatio;
+    uint256 public immutable LOCK_TO_TOKEN_RATIO;
 
     IERC20 public immutable lockToken;
     IIncentiveVoting public immutable incentiveVoter;
@@ -95,7 +95,7 @@ contract TokenLocker is Ownable, BaseConfig {
         incentiveVoter = _voter;
         feeReceiver = _feeReceiver;
 
-        lockToTokenRatio = _lockToTokenRatio;
+        LOCK_TO_TOKEN_RATIO = _lockToTokenRatio;
     }
 
     modifier notFrozen(address account) {
@@ -257,7 +257,7 @@ contract TokenLocker is Ownable, BaseConfig {
     /**
         @notice Get withdrawal and penalty amounts when withdrawing locked tokens
         @param account Account that will withdraw locked tokens
-        @param amountToWithdraw Desired withdrawal amount, divided by `lockToTokenRatio`
+        @param amountToWithdraw Desired withdrawal amount, divided by `LOCK_TO_TOKEN_RATIO`
         @return amountWithdrawn Actual amount withdrawn. If `amountToWithdraw` exceeds the
                                 max possible withdrawal, the return value is the max
                                 amount received after paying the penalty.
@@ -269,10 +269,10 @@ contract TokenLocker is Ownable, BaseConfig {
     ) external view returns (uint256 amountWithdrawn, uint256 penaltyAmountPaid) {
         AccountData storage accountData = accountLockData[account];
         uint32[65535] storage unlocks = accountEpochUnlocks[account];
-        if (amountToWithdraw != type(uint256).max) amountToWithdraw *= lockToTokenRatio;
+        if (amountToWithdraw != type(uint256).max) amountToWithdraw *= LOCK_TO_TOKEN_RATIO;
 
         // first we apply the unlocked balance without penalty
-        uint256 unlocked = accountData.unlocked * lockToTokenRatio;
+        uint256 unlocked = accountData.unlocked * LOCK_TO_TOKEN_RATIO;
         if (unlocked >= amountToWithdraw) {
             return (amountToWithdraw, 0);
         }
@@ -294,7 +294,7 @@ contract TokenLocker is Ownable, BaseConfig {
             }
 
             if ((bitfield >> (accountEpoch % 256)) & uint256(1) == 1) {
-                uint256 lockAmount = unlocks[accountEpoch] * lockToTokenRatio;
+                uint256 lockAmount = unlocks[accountEpoch] * LOCK_TO_TOKEN_RATIO;
 
                 uint256 penaltyOnAmount = 0;
                 if (accountEpoch > systemEpoch) {
@@ -309,8 +309,8 @@ contract TokenLocker is Ownable, BaseConfig {
                         (remaining * MAX_LOCK_EPOCHS) /
                         (MAX_LOCK_EPOCHS - (epochsToUnlock - offset)) -
                         remaining;
-                    uint256 dust = ((penaltyOnAmount + remaining) % lockToTokenRatio);
-                    if (dust > 0) penaltyOnAmount += lockToTokenRatio - dust;
+                    uint256 dust = ((penaltyOnAmount + remaining) % LOCK_TO_TOKEN_RATIO);
+                    if (dust > 0) penaltyOnAmount += LOCK_TO_TOKEN_RATIO - dust;
                     penaltyTotal += penaltyOnAmount;
                     remaining = 0;
                 } else {
@@ -416,7 +416,7 @@ contract TokenLocker is Ownable, BaseConfig {
         require(_epochs > 0, "Min 1 epoch");
         require(_amount > 0, "Amount must be nonzero");
         _lock(_account, _amount, _epochs);
-        lockToken.transferFrom(msg.sender, address(this), _amount * lockToTokenRatio);
+        lockToken.transferFrom(msg.sender, address(this), _amount * LOCK_TO_TOKEN_RATIO);
 
         return true;
     }
@@ -572,7 +572,7 @@ contract TokenLocker is Ownable, BaseConfig {
         accountData.updateEpochs[systemEpoch / 256] = bitfield[0];
         accountData.updateEpochs[(systemEpoch / 256) + 1] = bitfield[1];
 
-        lockToken.transferFrom(msg.sender, address(this), increasedAmount * lockToTokenRatio);
+        lockToken.transferFrom(msg.sender, address(this), increasedAmount * LOCK_TO_TOKEN_RATIO);
 
         // update account and total weight / decay storage values
         accountEpochWeights[_account][systemEpoch] = uint40(accountWeight + increasedWeight);
@@ -767,7 +767,7 @@ contract TokenLocker is Ownable, BaseConfig {
         if (_epochs > 0) {
             _lock(msg.sender, unlocked, _epochs);
         } else {
-            lockToken.transfer(msg.sender, unlocked * lockToTokenRatio);
+            lockToken.transfer(msg.sender, unlocked * LOCK_TO_TOKEN_RATIO);
             emit LocksWithdrawn(msg.sender, unlocked, 0);
         }
         return true;
@@ -781,7 +781,7 @@ contract TokenLocker is Ownable, BaseConfig {
 
              [total amount] * [epochs to unlock] / MAX_LOCK_EPOCHS = [penalty amount]
 
-        @param amountToWithdraw Amount to withdraw, divided by `lockToTokenRatio`. This
+        @param amountToWithdraw Amount to withdraw, divided by `LOCK_TO_TOKEN_RATIO`. This
                                 is the same number of tokens that will be received; the
                                 penalty amount is taken on top of this. Reverts if the
                                 caller's locked balances are insufficient to cover both
@@ -796,12 +796,12 @@ contract TokenLocker is Ownable, BaseConfig {
         AccountData storage accountData = accountLockData[msg.sender];
         uint32[65535] storage unlocks = accountEpochUnlocks[msg.sender];
         uint256 weight = _epochWeightWrite(msg.sender);
-        if (amountToWithdraw != type(uint256).max) amountToWithdraw *= lockToTokenRatio;
+        if (amountToWithdraw != type(uint256).max) amountToWithdraw *= LOCK_TO_TOKEN_RATIO;
 
         // start by withdrawing unlocked balance without penalty
-        uint256 unlocked = accountData.unlocked * lockToTokenRatio;
+        uint256 unlocked = accountData.unlocked * LOCK_TO_TOKEN_RATIO;
         if (unlocked >= amountToWithdraw) {
-            accountData.unlocked = uint32((unlocked - amountToWithdraw) / lockToTokenRatio);
+            accountData.unlocked = uint32((unlocked - amountToWithdraw) / LOCK_TO_TOKEN_RATIO);
             lockToken.transfer(msg.sender, amountToWithdraw);
             return amountToWithdraw;
         }
@@ -829,17 +829,17 @@ contract TokenLocker is Ownable, BaseConfig {
             }
 
             if ((bitfield >> (systemEpoch % 256)) & uint256(1) == 1) {
-                uint256 lockAmount = unlocks[systemEpoch] * lockToTokenRatio;
+                uint256 lockAmount = unlocks[systemEpoch] * LOCK_TO_TOKEN_RATIO;
                 uint256 penaltyOnAmount = (lockAmount * epochsToUnlock) / MAX_LOCK_EPOCHS;
 
                 if (lockAmount - penaltyOnAmount > remaining) {
                     // after penalty, locked amount exceeds remaining required balance
                     // we can complete the withdrawal using only a portion of this lock
                     penaltyOnAmount = (remaining * MAX_LOCK_EPOCHS) / (MAX_LOCK_EPOCHS - epochsToUnlock) - remaining;
-                    uint256 dust = ((penaltyOnAmount + remaining) % lockToTokenRatio);
-                    if (dust > 0) penaltyOnAmount += lockToTokenRatio - dust;
+                    uint256 dust = ((penaltyOnAmount + remaining) % LOCK_TO_TOKEN_RATIO);
+                    if (dust > 0) penaltyOnAmount += LOCK_TO_TOKEN_RATIO - dust;
                     penaltyTotal += penaltyOnAmount;
-                    uint256 lockReduceAmount = (penaltyOnAmount + remaining) / lockToTokenRatio;
+                    uint256 lockReduceAmount = (penaltyOnAmount + remaining) / LOCK_TO_TOKEN_RATIO;
                     decreasedWeight += lockReduceAmount * epochsToUnlock;
                     unlocks[systemEpoch] -= uint32(lockReduceAmount);
                     totalEpochUnlocks[systemEpoch] -= uint32(lockReduceAmount);
@@ -848,10 +848,10 @@ contract TokenLocker is Ownable, BaseConfig {
                     // after penalty, locked amount does not exceed remaining required balance
                     // the entire lock must be used in the withdrawal
                     penaltyTotal += penaltyOnAmount;
-                    decreasedWeight += (lockAmount / lockToTokenRatio) * epochsToUnlock;
+                    decreasedWeight += (lockAmount / LOCK_TO_TOKEN_RATIO) * epochsToUnlock;
                     bitfield = bitfield & ~(uint256(1) << (systemEpoch % 256));
                     unlocks[systemEpoch] = 0;
-                    totalEpochUnlocks[systemEpoch] -= uint32(lockAmount / lockToTokenRatio);
+                    totalEpochUnlocks[systemEpoch] -= uint32(lockAmount / LOCK_TO_TOKEN_RATIO);
                     remaining -= lockAmount - penaltyOnAmount;
                 }
 
@@ -869,8 +869,8 @@ contract TokenLocker is Ownable, BaseConfig {
             require(remaining == 0, "Insufficient balance after fees");
         }
 
-        accountData.locked -= uint32((amountToWithdraw + penaltyTotal - unlocked) / lockToTokenRatio);
-        totalDecayRate -= uint32((amountToWithdraw + penaltyTotal - unlocked) / lockToTokenRatio);
+        accountData.locked -= uint32((amountToWithdraw + penaltyTotal - unlocked) / LOCK_TO_TOKEN_RATIO);
+        totalDecayRate -= uint32((amountToWithdraw + penaltyTotal - unlocked) / LOCK_TO_TOKEN_RATIO);
         systemEpoch = getEpoch();
         accountEpochWeights[msg.sender][systemEpoch] = uint40(weight - decreasedWeight);
         totalEpochWeights[systemEpoch] = uint40(getTotalWeightWrite() - decreasedWeight);
