@@ -17,6 +17,41 @@ import "./interfaces/ITokenLocker.sol";
 contract AdminVoting is DelegatedOps, BaseConfig {
     using Address for address;
 
+    uint256 public constant BOOTSTRAP_PERIOD = 30 days;
+    uint256 public constant VOTING_PERIOD = 1 weeks;
+    uint256 public constant MIN_TIME_TO_EXECUTION = 1 days;
+    uint256 public constant MAX_TIME_TO_EXECUTION = 3 weeks;
+    uint256 public constant MIN_TIME_BETWEEN_PROPOSALS = 1 weeks;
+    uint256 public constant SET_GUARDIAN_PASSING_PCT = (MAX_PCT * 51) / 100;
+
+    ITokenLocker public immutable tokenLocker;
+    address public guardian;
+
+    // percent of total weight required to create a new proposal
+    uint256 public minCreateProposalPct;
+    // percent of total weight that must vote for a proposal before it can be executed
+    uint256 public passingPct;
+
+    struct Proposal {
+        uint16 epoch; // epoch which vote weights are based upon
+        uint32 createdAt; // timestamp when the proposal was created
+        uint32 canExecuteAfter; // earliest timestamp when proposal can be executed (0 if not passed)
+        uint40 currentWeight; //  amount of weight currently voting in favor
+        uint40 requiredWeight; // amount of weight required for the proposal to be executed
+        bool processed; // set to true once the proposal is processed
+    }
+
+    struct Action {
+        address target;
+        bytes data;
+    }
+
+    Proposal[] proposalData;
+    mapping(uint256 id => Action[]) proposalPayloads;
+
+    mapping(address account => mapping(uint256 id => uint256 weight)) public accountVoteWeights;
+    mapping(address account => uint256 timestamp) public latestProposalTimestamp;
+
     event ProposalCreated(
         address indexed account,
         uint256 proposalId,
@@ -37,43 +72,6 @@ contract AdminVoting is DelegatedOps, BaseConfig {
     event ProposalCreationMinPctSet(uint256 weight);
     event ProposalPassingPctSet(uint256 pct);
     event GuardianSet(address guardian);
-
-    struct Proposal {
-        uint16 epoch; // epoch which vote weights are based upon
-        uint32 createdAt; // timestamp when the proposal was created
-        uint32 canExecuteAfter; // earliest timestamp when proposal can be executed (0 if not passed)
-        uint40 currentWeight; //  amount of weight currently voting in favor
-        uint40 requiredWeight; // amount of weight required for the proposal to be executed
-        bool processed; // set to true once the proposal is processed
-    }
-
-    struct Action {
-        address target;
-        bytes data;
-    }
-
-    uint256 public constant BOOTSTRAP_PERIOD = 30 days;
-    uint256 public constant VOTING_PERIOD = 1 weeks;
-    uint256 public constant MIN_TIME_TO_EXECUTION = 1 days;
-    uint256 public constant MAX_TIME_TO_EXECUTION = 3 weeks;
-    uint256 public constant MIN_TIME_BETWEEN_PROPOSALS = 1 weeks;
-    uint256 public constant SET_GUARDIAN_PASSING_PCT = 5010;
-
-    ITokenLocker public immutable tokenLocker;
-    address public guardian;
-
-    Proposal[] proposalData;
-    mapping(uint256 => Action[]) proposalPayloads;
-
-    // account -> ID -> amount of weight voted in favor
-    mapping(address => mapping(uint256 => uint256)) public accountVoteWeights;
-
-    mapping(address account => uint256 timestamp) public latestProposalTimestamp;
-
-    // percent of total weight required to create a new proposal
-    uint256 public minCreateProposalPct;
-    // percent of total weight that must vote for a proposal before it can be executed
-    uint256 public passingPct;
 
     constructor(ITokenLocker _tokenLocker, address _guardian, uint256 _minCreateProposalPct, uint256 _passingPct) {
         tokenLocker = _tokenLocker;
