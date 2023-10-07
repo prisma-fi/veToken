@@ -78,17 +78,5 @@ interface IIncentiveVoting {
 
     function receiverCount() external view returns (uint256);
 
-    function receiverDecayRate(uint256) external view returns (uint32);
-
-    function receiverEpochUnlocks(uint256, uint256) external view returns (uint32);
-
-    function receiverUpdatedEpoch(uint256) external view returns (uint16);
-
     function tokenLocker() external view returns (address);
-
-    function totalDecayRate() external view returns (uint32);
-
-    function totalEpochUnlocks(uint256) external view returns (uint32);
-
-    function totalUpdatedEpoch() external view returns (uint16);
 }

@@ -93,8 +93,4 @@ interface ITokenLocker {
     function owner() external view returns (address);
 
     function penaltyWithdrawalsEnabled() external view returns (bool);
-
-    function totalDecayRate() external view returns (uint32);
-
-    function totalUpdatedEpoch() external view returns (uint16);
 }

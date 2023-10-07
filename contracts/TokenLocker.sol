@@ -63,10 +63,10 @@ contract TokenLocker is Ownable, BaseConfig {
 
     // Rate at which the total lock weight decreases each epoch. The total decay rate may not
     // be equal to the total number of locked tokens, as it does not include frozen accounts.
-    uint32 public totalDecayRate;
+    uint32 totalDecayRate;
     // Current epoch within `totalEpochWeights` and `totalEpochUnlocks`. When up-to-date
     // this value is always equal to `getEpoch()`
-    uint16 public totalUpdatedEpoch;
+    uint16 totalUpdatedEpoch;
 
     // epoch -> total lock weight
     uint40[65535] totalEpochWeights;
