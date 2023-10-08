@@ -16,7 +16,7 @@ pragma solidity 0.8.19;
             from the caller, create the debt position for `account`, and send newly
             minted tokens to the caller.
  */
-contract DelegatedOps {
+abstract contract DelegatedOps {
     mapping(address owner => mapping(address caller => bool isApproved)) public isApprovedDelegate;
 
     modifier callerOrDelegated(address _account) {

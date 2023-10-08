@@ -2,7 +2,7 @@
 
 pragma solidity 0.8.19;
 
-contract BaseConfig {
+abstract contract BaseConfig {
     // Number of seconds within one "epoch" (a locking / voting period). Contracts permanently
     // break from array out-of-bounds after 65535 epochs, so the duration of one epoch must be
     // long enough that this issue will not occur until the distant future.
