@@ -28,10 +28,13 @@ abstract contract BaseConfig {
         require(MAX_PCT < 65535, "BaseConfig: MAX_PCT >= 65535");
         require(EPOCH_LENGTH * 65535 >= 52 weeks * 100, "BaseConfig: EPOCH_LENGTH too small");
         require(START_OFFSET < EPOCH_LENGTH, "BaseConfig: START_OFFSET >= EPOCH_LENGTH");
-        START_TIME = (block.timestamp / EPOCH_LENGTH) * EPOCH_LENGTH - START_OFFSET;
+
+        uint256 start = (block.timestamp / EPOCH_LENGTH) * EPOCH_LENGTH - START_OFFSET;
+        if (start + EPOCH_LENGTH < block.timestamp) start += EPOCH_LENGTH;
+        START_TIME = start;
     }
 
     function getEpoch() public view returns (uint256 epoch) {
-        return (block.timestamp - START_TIME) / 1 weeks;
+        return (block.timestamp - START_TIME) / EPOCH_LENGTH;
     }
 }
