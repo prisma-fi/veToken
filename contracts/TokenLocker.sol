@@ -669,6 +669,7 @@ contract TokenLocker is Ownable, BaseConfig {
 
         // remove account locked balance from the total decay rate
         uint256 locked = accountData.locked;
+        emit LocksFrozen(msg.sender, locked);
 
         if (locked > 0) {
             totalDecayRate = uint32(totalDecayRate - locked);
@@ -699,7 +700,6 @@ contract TokenLocker is Ownable, BaseConfig {
             accountData.updateEpochs[systemEpoch / 256] = 0;
         }
         accountData.isFrozen = true;
-        emit LocksFrozen(msg.sender, locked);
     }
 
     /**
