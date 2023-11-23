@@ -352,7 +352,7 @@ contract TokenLocker is Ownable, BaseConfig {
             return weight;
         }
 
-        while (updatedEpoch < systemEpoch) {
+        while (updatedEpoch < epoch) {
             updatedEpoch++;
             weight -= rate;
             rate -= totalEpochUnlocks[updatedEpoch];
