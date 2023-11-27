@@ -83,6 +83,13 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
         tokenLocker = _tokenLocker;
     }
 
+    function registerNewReceiver() external onlyOwner returns (uint256) {
+        uint256 id = receiverCount;
+        receiverUpdatedEpoch[id] = uint16(getEpoch());
+        receiverCount = uint16(id + 1);
+        return id;
+    }
+
     function getAccountRegisteredLocks(
         address account
     ) external view returns (uint256 frozenWeight, LockData[] memory lockData) {
@@ -199,13 +206,6 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
         if (totalWeight == 0) return 0;
 
         return (1e18 * uint256(receiverEpochWeights[id][epoch])) / totalWeight;
-    }
-
-    function registerNewReceiver() external onlyOwner returns (uint256) {
-        uint256 id = receiverCount;
-        receiverUpdatedEpoch[id] = uint16(getEpoch());
-        receiverCount = uint16(id + 1);
-        return id;
     }
 
     /**
