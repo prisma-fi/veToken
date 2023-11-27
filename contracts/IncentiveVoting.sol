@@ -50,7 +50,6 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
 
     mapping(address => AccountData) accountLockData;
 
-    uint256 public receiverCount;
     // id -> receiver data
     uint32[65535] receiverDecayRate;
     uint16[65535] receiverUpdatedEpoch;
@@ -58,6 +57,7 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
     uint40[65535][65535] receiverEpochWeights;
     // id -> epoch -> registered lock weight that is lost
     uint32[65535][65535] receiverEpochUnlocks;
+    uint16 public receiverCount;
 
     uint32 totalDecayRate;
     uint16 totalUpdatedEpoch;
@@ -204,7 +204,7 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
     function registerNewReceiver() external onlyOwner returns (uint256) {
         uint256 id = receiverCount;
         receiverUpdatedEpoch[id] = uint16(getEpoch());
-        receiverCount = id + 1;
+        receiverCount = uint16(id + 1);
         return id;
     }
 
