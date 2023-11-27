@@ -122,11 +122,12 @@ contract Vault is Ownable, BaseConfig {
         uint256 length = _fixedInitialAmounts.length;
         for (uint256 i = 0; i < length; i++) {
             uint128 amount = _fixedInitialAmounts[i];
-            epochEmissions[i] = amount;
+            // +1 because in the first epoch there are no votes, so no emissions possible
+            epochEmissions[i + 1] = amount;
             totalAllocated += amount;
         }
 
-        // set initial transfer allowances for e.g. airdrops, vests, bribes
+        // set initial transfer allowances for e.g. airdrops, vests, team treasury
         length = initialAllowances.length;
         for (uint256 i = 0; i < length; i++) {
             uint256 amount = initialAllowances[i].amount;
@@ -167,6 +168,10 @@ contract Vault is Ownable, BaseConfig {
         IEmissionReceiver(receiver).notifyRegisteredId(assignedIds);
 
         return true;
+    }
+
+    function receiverCount() external view returns (uint256) {
+        return voter.receiverCount();
     }
 
     /**

@@ -2,7 +2,6 @@
 
 pragma solidity 0.8.19;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "./dependencies/DelegatedOps.sol";
 import "./interfaces/ITokenLocker.sol";
 import "./dependencies/BaseConfig.sol";
@@ -14,8 +13,9 @@ import "./dependencies/BaseConfig.sol";
             lock weights in this contract, and use this weight to vote on where
             new emissions will be released in the following epoch.
  */
-contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
+contract IncentiveVoting is BaseConfig, DelegatedOps {
     ITokenLocker public immutable tokenLocker;
+    address public immutable vault;
 
     struct AccountData {
         // system epoch when the account's lock weights were registered
@@ -79,11 +79,13 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, Ownable {
     // emitted each time the votes for `account` are cleared
     event ClearedVotes(address indexed account, uint256 indexed epoch);
 
-    constructor(ITokenLocker _tokenLocker) {
+    constructor(ITokenLocker _tokenLocker, address _vault) {
         tokenLocker = _tokenLocker;
+        vault = _vault;
     }
 
-    function registerNewReceiver() external onlyOwner returns (uint256) {
+    function registerNewReceiver() external returns (uint256) {
+        require(msg.sender == vault);
         uint256 id = receiverCount;
         receiverUpdatedEpoch[id] = uint16(getEpoch());
         receiverCount = uint16(id + 1);
