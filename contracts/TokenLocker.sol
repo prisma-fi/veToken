@@ -2,10 +2,10 @@
 
 pragma solidity 0.8.19;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./dependencies/BaseConfig.sol";
 import "./interfaces/IIncentiveVoting.sol";
+import "./interfaces/IGovToken.sol";
 
 /**
     @title Token Locker
@@ -19,12 +19,12 @@ contract TokenLocker is Ownable, BaseConfig {
     // contract corresponds to a deposit of `balance * LOCK_TO_TOKEN_RATIO` tokens. Balances
     // in this contract are stored as `uint32`, so the invariant:
     //
-    // `lockToken.totalSupply() <= type(uint32).max * LOCK_TO_TOKEN_RATIO`
+    // `govToken.totalSupply() <= type(uint32).max * LOCK_TO_TOKEN_RATIO`
     //
     // cannot be violated or the system could break due to overflow.
     uint256 public immutable LOCK_TO_TOKEN_RATIO;
 
-    IERC20 public immutable lockToken;
+    IGovToken public immutable govToken;
     IIncentiveVoting public immutable incentiveVoter;
 
     bool public penaltyWithdrawalsEnabled;
@@ -90,12 +90,14 @@ contract TokenLocker is Ownable, BaseConfig {
     event LocksUnfrozen(address indexed account, uint256 amount);
     event LocksWithdrawn(address indexed account, uint256 withdrawn, uint256 penalty);
 
-    constructor(IERC20 _token, IIncentiveVoting _voter, address _feeReceiver, uint256 _lockToTokenRatio) {
-        lockToken = _token;
+    constructor(IGovToken _token, IIncentiveVoting _voter, address _feeReceiver, uint256 _lockToTokenRatio) {
+        govToken = _token;
         incentiveVoter = _voter;
         feeReceiver = _feeReceiver;
 
         LOCK_TO_TOKEN_RATIO = _lockToTokenRatio;
+
+        require(_token.totalSupply() <= type(uint32).max * _lockToTokenRatio, "Total supply too large!");
     }
 
     modifier notFrozen(address account) {
@@ -416,7 +418,7 @@ contract TokenLocker is Ownable, BaseConfig {
         require(_epochs > 0, "Min 1 epoch");
         require(_amount > 0, "Amount must be nonzero");
         _lock(_account, _amount, _epochs);
-        lockToken.transferFrom(msg.sender, address(this), _amount * LOCK_TO_TOKEN_RATIO);
+        govToken.transferToLocker(msg.sender, _amount * LOCK_TO_TOKEN_RATIO);
 
         return true;
     }
@@ -572,7 +574,7 @@ contract TokenLocker is Ownable, BaseConfig {
         accountData.updateEpochs[systemEpoch / 256] = bitfield[0];
         accountData.updateEpochs[(systemEpoch / 256) + 1] = bitfield[1];
 
-        lockToken.transferFrom(msg.sender, address(this), increasedAmount * LOCK_TO_TOKEN_RATIO);
+        govToken.transferToLocker(msg.sender, increasedAmount * LOCK_TO_TOKEN_RATIO);
 
         // update account and total weight / decay storage values
         accountEpochWeights[_account][systemEpoch] = uint40(accountWeight + increasedWeight);
@@ -767,7 +769,7 @@ contract TokenLocker is Ownable, BaseConfig {
         if (_epochs > 0) {
             _lock(msg.sender, unlocked, _epochs);
         } else {
-            lockToken.transfer(msg.sender, unlocked * LOCK_TO_TOKEN_RATIO);
+            govToken.transfer(msg.sender, unlocked * LOCK_TO_TOKEN_RATIO);
             emit LocksWithdrawn(msg.sender, unlocked, 0);
         }
         return true;
@@ -802,7 +804,7 @@ contract TokenLocker is Ownable, BaseConfig {
         uint256 unlocked = accountData.unlocked * LOCK_TO_TOKEN_RATIO;
         if (unlocked >= amountToWithdraw) {
             accountData.unlocked = uint32((unlocked - amountToWithdraw) / LOCK_TO_TOKEN_RATIO);
-            lockToken.transfer(msg.sender, amountToWithdraw);
+            govToken.transfer(msg.sender, amountToWithdraw);
             return amountToWithdraw;
         }
 
@@ -875,8 +877,8 @@ contract TokenLocker is Ownable, BaseConfig {
         accountEpochWeights[msg.sender][systemEpoch] = uint40(weight - decreasedWeight);
         totalEpochWeights[systemEpoch] = uint40(getTotalWeightWrite() - decreasedWeight);
 
-        lockToken.transfer(msg.sender, amountToWithdraw);
-        lockToken.transfer(feeReceiver, penaltyTotal);
+        govToken.transfer(msg.sender, amountToWithdraw);
+        govToken.transfer(feeReceiver, penaltyTotal);
         emit LocksWithdrawn(msg.sender, amountToWithdraw, penaltyTotal);
 
         return amountToWithdraw;
