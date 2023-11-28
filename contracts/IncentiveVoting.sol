@@ -156,6 +156,7 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, SystemStart {
         uint256 epoch = getEpoch();
         uint256 updatedEpoch = receiverUpdatedEpoch[idx];
         uint256 weight = receiverEpochWeights[idx][updatedEpoch];
+        if (epoch == updatedEpoch) return weight;
 
         if (weight == 0) {
             receiverUpdatedEpoch[idx] = uint16(epoch);
