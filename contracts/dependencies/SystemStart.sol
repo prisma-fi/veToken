@@ -9,7 +9,7 @@ import "../interfaces/ICoreOwner.sol";
     @author Prisma Finance
     @dev Provides a unified `START_TIME` and `getEpoch`
  */
-contract SystemStart {
+abstract contract SystemStart {
     uint256 immutable START_TIME;
     uint256 immutable EPOCH_LENGTH;
 
