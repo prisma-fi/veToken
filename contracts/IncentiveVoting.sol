@@ -2,9 +2,10 @@
 
 pragma solidity 0.8.19;
 
-import "./dependencies/DelegatedOps.sol";
-import "./interfaces/ITokenLocker.sol";
 import "./dependencies/BaseConfig.sol";
+import "./dependencies/DelegatedOps.sol";
+import "./dependencies/SystemStart.sol";
+import "./interfaces/ITokenLocker.sol";
 
 /**
     @title Incentive Voting
@@ -13,7 +14,7 @@ import "./dependencies/BaseConfig.sol";
             lock weights in this contract, and use this weight to vote on where
             new emissions will be released in the following epoch.
  */
-contract IncentiveVoting is BaseConfig, DelegatedOps {
+contract IncentiveVoting is BaseConfig, DelegatedOps, SystemStart {
     ITokenLocker public immutable tokenLocker;
     address public immutable vault;
 
@@ -79,7 +80,7 @@ contract IncentiveVoting is BaseConfig, DelegatedOps {
     // emitted each time the votes for `account` are cleared
     event ClearedVotes(address indexed account, uint256 indexed epoch);
 
-    constructor(ITokenLocker _tokenLocker, address _vault) {
+    constructor(address core, ITokenLocker _tokenLocker, address _vault) SystemStart(core) {
         tokenLocker = _tokenLocker;
         vault = _vault;
     }

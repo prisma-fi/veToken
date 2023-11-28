@@ -3,9 +3,10 @@
 pragma solidity 0.8.19;
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 import "./dependencies/BaseConfig.sol";
+import "./dependencies/CoreOwnable.sol";
+import "./dependencies/SystemStart.sol";
 import "./interfaces/IEmissionSchedule.sol";
 import "./interfaces/IIncentiveVoting.sol";
 import "./interfaces/ITokenLocker.sol";
@@ -29,7 +30,7 @@ interface IRewards {
             vault gradually releases tokens to registered emissions receivers
             as determined by `EmissionSchedule` and `BoostCalculator`.
  */
-contract Vault is Ownable, BaseConfig {
+contract Vault is CoreOwnable, SystemStart {
     using Address for address;
     using SafeERC20 for IERC20;
 
@@ -97,6 +98,7 @@ contract Vault is Ownable, BaseConfig {
     event BoostDelegationSet(address indexed boostDelegate, bool isEnabled, uint256 feePct, address callback);
 
     constructor(
+        address core,
         IERC20 _token,
         ITokenLocker _locker,
         IIncentiveVoting _voter,
@@ -105,7 +107,7 @@ contract Vault is Ownable, BaseConfig {
         uint64 initialLockDuration,
         uint128[] memory _fixedInitialAmounts,
         InitialAllowance[] memory initialAllowances
-    ) {
+    ) CoreOwnable(core) SystemStart(core) {
         govToken = _token;
         locker = _locker;
         voter = _voter;

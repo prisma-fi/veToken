@@ -5,6 +5,7 @@ pragma solidity 0.8.19;
 import "@openzeppelin/contracts/utils/Address.sol";
 import "./dependencies/DelegatedOps.sol";
 import "./dependencies/BaseConfig.sol";
+import "./dependencies/SystemStart.sol";
 import "./interfaces/ITokenLocker.sol";
 
 /**
@@ -14,7 +15,7 @@ import "./interfaces/ITokenLocker.sol";
             Allows executing arbitrary function calls only after a required percentage
             of token lockers have signalled in favor of performing the action.
  */
-contract AdminVoting is DelegatedOps, BaseConfig {
+contract AdminVoting is BaseConfig, DelegatedOps, SystemStart {
     using Address for address;
 
     uint256 public constant BOOTSTRAP_PERIOD = 30 days;
@@ -73,7 +74,13 @@ contract AdminVoting is DelegatedOps, BaseConfig {
     event ProposalPassingPctSet(uint256 pct);
     event GuardianSet(address guardian);
 
-    constructor(ITokenLocker _tokenLocker, address _guardian, uint256 _minCreateProposalPct, uint256 _passingPct) {
+    constructor(
+        address core,
+        ITokenLocker _tokenLocker,
+        address _guardian,
+        uint256 _minCreateProposalPct,
+        uint256 _passingPct
+    ) SystemStart(core) {
         tokenLocker = _tokenLocker;
         guardian = _guardian;
 

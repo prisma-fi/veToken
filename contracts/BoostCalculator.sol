@@ -3,7 +3,7 @@
 pragma solidity 0.8.19;
 
 import "./interfaces/ITokenLocker.sol";
-import "./dependencies/BaseConfig.sol";
+import "./dependencies/SystemStart.sol";
 
 /**
     @title Boost Calculator
@@ -50,7 +50,7 @@ import "./dependencies/BaseConfig.sol";
             are returned to the unallocated token supply, and distributed again in the
             emissions of future epochs.
  */
-contract BoostCalculator is BaseConfig {
+contract BoostCalculator is SystemStart {
     ITokenLocker public immutable tokenLocker;
 
     // initial number of epochs where all accounts recieve max boost
@@ -62,7 +62,7 @@ contract BoostCalculator is BaseConfig {
     // account -> epoch -> % of lock weight (where 1e9 represents 100%)
     mapping(address account => uint32[65535]) accountEpochLockPct;
 
-    constructor(ITokenLocker _locker, uint256 _graceEpochs) {
+    constructor(address core, ITokenLocker _locker, uint256 _graceEpochs) SystemStart(core) {
         require(_graceEpochs > 0, "Grace epochs cannot be 0");
         tokenLocker = _locker;
         MAX_BOOST_GRACE_EPOCHS = _graceEpochs + getEpoch();

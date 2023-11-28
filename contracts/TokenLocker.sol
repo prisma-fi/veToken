@@ -2,7 +2,8 @@
 
 pragma solidity 0.8.19;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "./dependencies/CoreOwnable.sol";
+import "./dependencies/SystemStart.sol";
 import "./dependencies/BaseConfig.sol";
 import "./interfaces/IIncentiveVoting.sol";
 import "./interfaces/IGovToken.sol";
@@ -14,7 +15,7 @@ import "./interfaces/IGovToken.sol";
             which is used within `AdminVoting` and `IncentiveVoting` to vote on
             core protocol operations.
  */
-contract TokenLocker is Ownable, BaseConfig {
+contract TokenLocker is BaseConfig, CoreOwnable, SystemStart {
     // Multiplier applied during token deposits and withdrawals. A balance within this
     // contract corresponds to a deposit of `balance * LOCK_TO_TOKEN_RATIO` tokens. Balances
     // in this contract are stored as `uint32`, so the invariant:
@@ -28,7 +29,6 @@ contract TokenLocker is Ownable, BaseConfig {
     IIncentiveVoting public immutable incentiveVoter;
 
     bool public penaltyWithdrawalsEnabled;
-    address public feeReceiver;
 
     struct AccountData {
         // Currently locked balance. Each epoch the lock weight decays by this amount.
@@ -90,10 +90,14 @@ contract TokenLocker is Ownable, BaseConfig {
     event LocksUnfrozen(address indexed account, uint256 amount);
     event LocksWithdrawn(address indexed account, uint256 withdrawn, uint256 penalty);
 
-    constructor(IGovToken _token, IIncentiveVoting _voter, address _feeReceiver, uint256 _lockToTokenRatio) {
+    constructor(
+        address core,
+        IGovToken _token,
+        IIncentiveVoting _voter,
+        uint256 _lockToTokenRatio
+    ) CoreOwnable(core) SystemStart(core) {
         govToken = _token;
         incentiveVoter = _voter;
-        feeReceiver = _feeReceiver;
 
         LOCK_TO_TOKEN_RATIO = _lockToTokenRatio;
 
@@ -110,14 +114,6 @@ contract TokenLocker is Ownable, BaseConfig {
      */
     function setPenaltyWithdrawalsEnabled(bool _enabled) external onlyOwner returns (bool) {
         penaltyWithdrawalsEnabled = _enabled;
-        return true;
-    }
-
-    /**
-        @notice Set the address where early-exit penalty fees are sent
-     */
-    function setFeeReceiver(address _receiver) external onlyOwner returns (bool) {
-        feeReceiver = _receiver;
         return true;
     }
 
@@ -878,7 +874,7 @@ contract TokenLocker is Ownable, BaseConfig {
         totalEpochWeights[systemEpoch] = uint40(getTotalWeightWrite() - decreasedWeight);
 
         govToken.transfer(msg.sender, amountToWithdraw);
-        govToken.transfer(feeReceiver, penaltyTotal);
+        govToken.transfer(CORE_OWNER.feeReceiver(), penaltyTotal);
         emit LocksWithdrawn(msg.sender, amountToWithdraw, penaltyTotal);
 
         return amountToWithdraw;
