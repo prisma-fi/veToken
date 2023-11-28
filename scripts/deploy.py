@@ -1,4 +1,5 @@
 from brownie import (
+    CoreOwner,
     TokenLocker,
     IncentiveVoting,
     AdminVoting,
@@ -20,6 +21,18 @@ PASSING_PCT = 30
 TOKEN_NAME = "Valueless Governance Token"
 TOKEN_SYMBOL = "VGT"
 TOKEN_TOTAL_SUPPLY = 100_000_000 * 10**18
+
+#  Number of seconds within one "epoch" (a locking / voting period).
+# Contracts permanently break from array out-of-bounds after 65535 epochs,
+# so the duration of one epoch must be long enough that this issue will
+# not occur until the distant future.
+EPOCH_LENGTH = 86400 * 7
+
+# Seconds to subtract when calculating `START_TIME`. With an epoch length
+# of one week, an offset of 3.5 days means that a new epoch begins every
+# Sunday at 12:00:00 UTC.
+START_OFFSET = 86400 * 3.5
+
 
 # list of `(address, amount)` for approvals to transfer tokens out of the vault
 # used for allocating tokens outside of normal emissions, e.g airdrops, vests, team treasury
@@ -56,19 +69,23 @@ def main():
 
     nonce = deployer.nonce
 
-    token = deployer.get_deployment_address(nonce)
-    locker = deployer.get_deployment_address(nonce + 1)
-    voter = deployer.get_deployment_address(nonce + 2)
-    vault = deployer.get_deployment_address(nonce + 3)
-    boost = deployer.get_deployment_address(nonce + 4)
-    emission_schedule = deployer.get_deployment_address(nonce + 5)
+    core = deployer.get_deployment_address(nonce)
+    token = deployer.get_deployment_address(nonce + 1)
+    locker = deployer.get_deployment_address(nonce + 2)
+    voter = deployer.get_deployment_address(nonce + 3)
+    vault = deployer.get_deployment_address(nonce + 4)
+    boost = deployer.get_deployment_address(nonce + 5)
+    emission_schedule = deployer.get_deployment_address(nonce + 6)
+    admin = deployer.get_deployment_address(nonce + 7)
 
+    core = CoreOwner.deploy(admin, FEE_RECEIVER, 86400 * 7, 86400 * 4, {"from": deployer})
     token = GovToken.deploy(
         TOKEN_NAME, TOKEN_SYMBOL, vault, locker, TOKEN_TOTAL_SUPPLY, {"from": deployer}
     )
-    locker = TokenLocker.deploy(token, voter, FEE_RECEIVER, LOCK_TO_TOKEN_RATIO, {"from": deployer})
-    voter = IncentiveVoting.deploy(locker, vault, {"from": deployer})
+    locker = TokenLocker.deploy(core, token, voter, LOCK_TO_TOKEN_RATIO, {"from": deployer})
+    voter = IncentiveVoting.deploy(core, locker, vault, {"from": deployer})
     vault = Vault.deploy(
+        core,
         token,
         locker,
         voter,
@@ -79,11 +96,12 @@ def main():
         ALLOWANCES,
         {"from": deployer},
     )
-    boost = BoostCalculator.deploy(locker, BOOST_GRACE_EPOCHS, {"from": deployer})
+    boost = BoostCalculator.deploy(core, locker, BOOST_GRACE_EPOCHS, {"from": deployer})
 
     max_pct = voter.MAX_PCT()
     pct_schedule = [(i[0], max_pct * i[1] // 100) for i in EPOCH_PCT_SCHEDULE[::-1]]
     emission_schedule = EmissionSchedule.deploy(
+        core,
         voter,
         vault,
         INITIAL_LOCK_DURATION,
@@ -95,6 +113,6 @@ def main():
 
     create_pct = max_pct * MIN_CREATE_PROPOSAL_PCT // 100
     pass_pct = max_pct * PASSING_PCT // 100
-    admin = AdminVoting.deploy(locker, GUARDIAN, create_pct, pass_pct, {"from": deployer})
+    admin = AdminVoting.deploy(core, locker, GUARDIAN, create_pct, pass_pct, {"from": deployer})
 
     return locker, voter, admin
