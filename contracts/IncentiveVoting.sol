@@ -87,9 +87,9 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, SystemStart {
 
     function registerNewReceiver() external returns (uint256) {
         require(msg.sender == vault);
-        uint256 id = receiverCount;
+        uint256 id = receiverCount + 1;
         receiverUpdatedEpoch[id] = uint16(getEpoch());
-        receiverCount = uint16(id + 1);
+        receiverCount = uint16(id);
         return id;
     }
 
@@ -114,7 +114,7 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, SystemStart {
     }
 
     function getReceiverWeightAt(uint256 idx, uint256 epoch) public view returns (uint256) {
-        if (idx >= receiverCount) return 0;
+        if (idx > receiverCount) return 0;
         uint256 rate = receiverDecayRate[idx];
         uint256 updatedEpoch = receiverUpdatedEpoch[idx];
         if (epoch <= updatedEpoch) return receiverEpochWeights[idx][epoch];
@@ -152,7 +152,7 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, SystemStart {
     }
 
     function getReceiverWeightWrite(uint256 idx) public returns (uint256) {
-        require(idx < receiverCount, "Invalid ID");
+        require(idx != 0 && idx < receiverCount, "Invalid ID");
         uint256 epoch = getEpoch();
         uint256 updatedEpoch = receiverUpdatedEpoch[idx];
         uint256 weight = receiverEpochWeights[idx][updatedEpoch];

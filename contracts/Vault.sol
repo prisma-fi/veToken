@@ -150,8 +150,9 @@ contract Vault is CoreOwnable, SystemStart {
 
     /**
         @notice Register a new emission receiver
-        @dev Once this function is called, the receiver ID is immediately
-             eligible for votes within `IncentiveVoting`
+        @dev Once a receiver is registered, the receiver ID is immediately eligible
+             for votes within `IncentiveVoting`. Receiver IDs are ordered sequentially
+             starting from 1. An ID of 0 is considered unset.
         @param receiver Address of the receiver
         @param count Number of IDs to assign to the receiver
      */
@@ -275,6 +276,9 @@ contract Vault is CoreOwnable, SystemStart {
                         accesses the tokens using `Vault.transferAllocatedTokens`
      */
     function allocateNewEmissions(uint256 id) external returns (uint256) {
+        // avoid reverting in case of a call from an unregistered receiver
+        if (id == 0) return 0;
+
         Receiver memory receiver = idToReceiver[id];
         require(receiver.account == msg.sender, "Receiver not registered");
         uint256 epoch = receiverUpdatedEpoch[id];
