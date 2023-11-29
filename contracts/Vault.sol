@@ -286,7 +286,7 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
         require(maxEmissionPct <= MAX_PCT, "Invalid maxEmissionPct");
         Receiver memory receiver = idToReceiver[id];
         require(receiver.account != address(0), "ID not set");
-        receiver.maxEmissionPct = uint16(MAX_PCT);
+        receiver.maxEmissionPct = uint16(maxEmissionPct);
         idToReceiver[id] = receiver;
         emit ReceiverMaxEmissionPctSet(id, maxEmissionPct);
 
