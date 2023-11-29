@@ -139,6 +139,96 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
         emit UnallocatedSupplyReduced(totalAllocated, unallocatedTotal);
     }
 
+    function receiverCount() external view returns (uint256) {
+        return voter.receiverCount();
+    }
+
+    /**
+        @notice Get the current expected total emissions for the next epoch
+        @dev Changes to `unallocatedTotal` during the epoch can affect this number
+     */
+    function getExpectedNextEpochEmissions() external view returns (uint256) {
+        return emissionSchedule.getExpectedNextEpochEmissions(getEpoch() + 1, unallocatedTotal);
+    }
+
+    /**
+        @notice Get information on account's boost for the current epoch
+        @return currentBoost Accounts's current boost, as a whole number where 10000 represents 1x
+        @return claimed Amount claimed so far this epoch (without any adjustments for boost)
+        @return maxBoosted Total claimable amount this epoch that can recieve maximum boost
+        @return boosted Total claimable amount this epoch that can receive >1x boost.
+                        This value also includes the `maxBoosted` amount.
+     */
+    function getAccountBoostData(
+        address account
+    ) external view returns (uint256 currentBoost, uint256 claimed, uint256 maxBoosted, uint256 boosted) {
+        uint256 epoch = getEpoch();
+        uint256 epochTotal = epochEmissions[epoch];
+        uint256 previousAmount = accountEpochEarned[account][epoch];
+        (currentBoost, maxBoosted, boosted) = boostCalculator.getAccountBoostData(account, previousAmount, epochTotal);
+        return (currentBoost, previousAmount, maxBoosted, boosted);
+    }
+
+    /**
+        @notice Claimable govToken amount for `account` in `rewardContract` after applying boost
+        @dev Returns (0, 0) if the boost delegate is invalid, or the delgate's callback fee
+             function is incorrectly configured.
+        @param account Address claiming rewards
+        @param boostDelegate Address to delegate boost from when claiming. Set as
+                             `address(0)` to use the boost of the claimer.
+        @param rewardContracts Array of addresses of receiver contracts where the caller has
+                               rewards to claim.
+        @return adjustedAmount Amount received after boost, prior to paying delegate fee
+        @return feeToDelegate Fee amount paid to `boostDelegate`
+
+     */
+    function getAdjustedClaimableReward(
+        address account,
+        address receiver,
+        address boostDelegate,
+        IEmissionReceiver[] calldata rewardContracts
+    ) external view returns (uint256 adjustedAmount, uint256 feeToDelegate) {
+        uint256 amount;
+        for (uint i = 0; i < rewardContracts.length; i++) {
+            amount += rewardContracts[i].claimableReward(account);
+        }
+        uint256 epoch = getEpoch();
+        uint256 totalWeekly = epochEmissions[epoch];
+        address claimant = boostDelegate == address(0) ? account : boostDelegate;
+        uint256 previousAmount = accountEpochEarned[claimant][epoch];
+
+        uint256 fee;
+        if (boostDelegate != address(0)) {
+            Delegation memory data = boostDelegation[boostDelegate];
+            if (!data.isEnabled) return (0, 0);
+            fee = data.feePct;
+            if (fee == type(uint16).max) {
+                try data.callback.getFeePct(claimant, receiver, amount, previousAmount, totalWeekly) returns (
+                    uint256 _fee
+                ) {
+                    fee = _fee;
+                } catch {
+                    return (0, 0);
+                }
+            }
+            if (fee > MAX_PCT) return (0, 0);
+        }
+
+        adjustedAmount = boostCalculator.getBoostedAmount(claimant, amount, previousAmount, totalWeekly);
+        fee = (adjustedAmount * fee) / MAX_PCT;
+
+        return (adjustedAmount, fee);
+    }
+
+    /**
+        @notice Get the claimable amount that `claimant` has earned boost delegation fees
+     */
+    function getClaimableBoostDelegationFees(address claimant) external view returns (uint256 amount) {
+        amount = storedPendingReward[claimant];
+        // only return values `>= LOCK_TO_TOKEN_RATIO` so we do not report "dust" stored for normal users
+        return amount >= LOCK_TO_TOKEN_RATIO ? amount : 0;
+    }
+
     /**
         @notice Register a new emission receiver
         @dev Once a receiver is registered, the receiver ID is immediately eligible
@@ -172,10 +262,6 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
         IEmissionReceiver(receiver).notifyRegisteredId(assignedIds);
 
         return true;
-    }
-
-    function receiverCount() external view returns (uint256) {
-        return voter.receiverCount();
     }
 
     /**
@@ -479,57 +565,6 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
     }
 
     /**
-        @notice Claimable govToken amount for `account` in `rewardContract` after applying boost
-        @dev Returns (0, 0) if the boost delegate is invalid, or the delgate's callback fee
-             function is incorrectly configured.
-        @param account Address claiming rewards
-        @param boostDelegate Address to delegate boost from when claiming. Set as
-                             `address(0)` to use the boost of the claimer.
-        @param rewardContracts Array of addresses of receiver contracts where the caller has
-                               rewards to claim.
-        @return adjustedAmount Amount received after boost, prior to paying delegate fee
-        @return feeToDelegate Fee amount paid to `boostDelegate`
-
-     */
-    function getAdjustedClaimableReward(
-        address account,
-        address receiver,
-        address boostDelegate,
-        IEmissionReceiver[] calldata rewardContracts
-    ) external view returns (uint256 adjustedAmount, uint256 feeToDelegate) {
-        uint256 amount;
-        for (uint i = 0; i < rewardContracts.length; i++) {
-            amount += rewardContracts[i].claimableReward(account);
-        }
-        uint256 epoch = getEpoch();
-        uint256 totalWeekly = epochEmissions[epoch];
-        address claimant = boostDelegate == address(0) ? account : boostDelegate;
-        uint256 previousAmount = accountEpochEarned[claimant][epoch];
-
-        uint256 fee;
-        if (boostDelegate != address(0)) {
-            Delegation memory data = boostDelegation[boostDelegate];
-            if (!data.isEnabled) return (0, 0);
-            fee = data.feePct;
-            if (fee == type(uint16).max) {
-                try data.callback.getFeePct(claimant, receiver, amount, previousAmount, totalWeekly) returns (
-                    uint256 _fee
-                ) {
-                    fee = _fee;
-                } catch {
-                    return (0, 0);
-                }
-            }
-            if (fee > MAX_PCT) return (0, 0);
-        }
-
-        adjustedAmount = boostCalculator.getBoostedAmount(claimant, amount, previousAmount, totalWeekly);
-        fee = (adjustedAmount * fee) / MAX_PCT;
-
-        return (adjustedAmount, fee);
-    }
-
-    /**
         @notice Enable or disable boost delegation, and set boost delegation parameters
         @param isEnabled is boost delegation enabled?
         @param feePct Fee % charged when claims are made that delegate to the caller's boost.
@@ -555,40 +590,5 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
         emit BoostDelegationSet(msg.sender, isEnabled, feePct, callback);
 
         return true;
-    }
-
-    /**
-        @notice Get the claimable amount that `claimant` has earned boost delegation fees
-     */
-    function claimableBoostDelegationFees(address claimant) external view returns (uint256 amount) {
-        amount = storedPendingReward[claimant];
-        // only return values `>= LOCK_TO_TOKEN_RATIO` so we do not report "dust" stored for normal users
-        return amount >= LOCK_TO_TOKEN_RATIO ? amount : 0;
-    }
-
-    /**
-        @notice Get the current expected total emissions for the next epoch
-        @dev Changes to `unallocatedTotal` during the epoch can affect this number
-     */
-    function getExpectedNextEpochEmissions() external view returns (uint256) {
-        return emissionSchedule.getExpectedNextEpochEmissions(getEpoch() + 1, unallocatedTotal);
-    }
-
-    /**
-        @notice Get information on account's boost for the current epoch
-        @return currentBoost Accounts's current boost, as a whole number where 10000 represents 1x
-        @return claimed Amount claimed so far this epoch (without any adjustments for boost)
-        @return maxBoosted Total claimable amount this epoch that can recieve maximum boost
-        @return boosted Total claimable amount this epoch that can receive >1x boost.
-                        This value also includes the `maxBoosted` amount.
-     */
-    function getAccountBoostData(
-        address account
-    ) external view returns (uint256 currentBoost, uint256 claimed, uint256 maxBoosted, uint256 boosted) {
-        uint256 epoch = getEpoch();
-        uint256 epochTotal = epochEmissions[epoch];
-        uint256 previousAmount = accountEpochEarned[account][epoch];
-        (currentBoost, maxBoosted, boosted) = boostCalculator.getAccountBoostData(account, previousAmount, epochTotal);
-        return (currentBoost, previousAmount, maxBoosted, boosted);
     }
 }
