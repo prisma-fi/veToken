@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity 0.8.19;
+pragma solidity ^0.8.0;
 
 /**
     @title Prisma Boost Delegate Interface
@@ -34,6 +34,8 @@ interface IBoostDelegate {
         @dev MUST BE INCLUDED. Called after each successful claim which used
              this contract's delegated boost.
         @param claimant Address that performed the claim
+        @param receiver Address receiving the claimed rewards
+        @param boostDelegate Address that was delegated to
         @param amount Amount that claimed (before applying boost or fee)
         @param adjustedAmount Actual amount received by `claimant`
         @param fee Fee amount paid by `claimant`
@@ -43,6 +45,7 @@ interface IBoostDelegate {
     function delegatedBoostCallback(
         address claimant,
         address receiver,
+        address boostDelegate,
         uint amount,
         uint adjustedAmount,
         uint fee,

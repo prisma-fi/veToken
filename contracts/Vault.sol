@@ -539,6 +539,7 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
                     delegateCallback.delegatedBoostCallback(
                         account,
                         receiver,
+                        boostDelegate,
                         amount,
                         adjustedAmount,
                         fee,
