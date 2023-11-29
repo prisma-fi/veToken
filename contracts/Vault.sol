@@ -362,7 +362,7 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
         IEmissionReceiver[] calldata rewardContracts,
         uint256 maxFeePct
     ) external returns (bool) {
-        require(maxFeePct <= 10000, "Invalid maxFeePct");
+        require(maxFeePct <= MAX_PCT, "Invalid maxFeePct");
 
         uint256 total;
         uint256 length = rewardContracts.length;
@@ -409,7 +409,7 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
                 require(data.isEnabled, "Invalid delegate");
                 if (data.feePct == type(uint16).max) {
                     fee = delegateCallback.getFeePct(account, receiver, amount, previousAmount, totalWeekly);
-                    require(fee <= 10000, "Invalid delegate fee");
+                    require(fee <= MAX_PCT, "Invalid delegate fee");
                 } else fee = data.feePct;
                 require(fee <= maxFeePct, "fee exceeds maxFeePct");
             }
@@ -435,7 +435,7 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
 
             // apply boost delegation fee
             if (fee != 0) {
-                fee = (adjustedAmount * fee) / 10000;
+                fee = (adjustedAmount * fee) / MAX_PCT;
                 adjustedAmount -= fee;
             }
 
@@ -520,11 +520,11 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
                     return (0, 0);
                 }
             }
-            if (fee > 10000) return (0, 0);
+            if (fee > MAX_PCT) return (0, 0);
         }
 
         adjustedAmount = boostCalculator.getBoostedAmount(claimant, amount, previousAmount, totalWeekly);
-        fee = (adjustedAmount * fee) / 10000;
+        fee = (adjustedAmount * fee) / MAX_PCT;
 
         return (adjustedAmount, fee);
     }
@@ -540,7 +540,7 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
      */
     function setBoostDelegationParams(bool isEnabled, uint256 feePct, address callback) external returns (bool) {
         if (isEnabled) {
-            require(feePct <= 10000 || feePct == type(uint16).max, "Invalid feePct");
+            require(feePct <= MAX_PCT || feePct == type(uint16).max, "Invalid feePct");
             if (callback != address(0) || feePct == type(uint16).max) {
                 require(callback.isContract(), "Callback must be a contract");
             }
