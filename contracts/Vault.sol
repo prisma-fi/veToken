@@ -26,7 +26,7 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
     using SafeERC20 for IERC20;
 
     IERC20 public immutable govToken;
-    ITokenLocker public immutable locker;
+    ITokenLocker public immutable tokenLocker;
     IIncentiveVoting public immutable voter;
     uint256 immutable LOCK_TO_TOKEN_RATIO;
 
@@ -108,7 +108,7 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
         InitialAllowance[] memory initialAllowances
     ) CoreOwnable(core) SystemStart(core) {
         govToken = _token;
-        locker = _locker;
+        tokenLocker = _locker;
         voter = _voter;
         LOCK_TO_TOKEN_RATIO = _locker.LOCK_TO_TOKEN_RATIO();
 
@@ -201,7 +201,7 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
             amount += rewardContracts[i].claimableReward(account);
         }
         uint256 epoch = getEpoch();
-        uint256 totalWeekly = epochEmissions[epoch];
+        uint256 epochTotal = epochEmissions[epoch];
         address claimant = boostDelegate == address(0) ? account : boostDelegate;
         uint256 previousAmount = accountEpochEarned[claimant][epoch];
 
@@ -211,7 +211,7 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
             if (!data.isEnabled) return (0, 0);
             fee = data.feePct;
             if (fee == type(uint16).max) {
-                try data.callback.getFeePct(claimant, receiver, amount, previousAmount, totalWeekly) returns (
+                try data.callback.getFeePct(claimant, receiver, amount, previousAmount, epochTotal) returns (
                     uint256 _fee
                 ) {
                     fee = _fee;
@@ -222,7 +222,7 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
             if (fee > MAX_PCT) return (0, 0);
         }
 
-        adjustedAmount = boostCalculator.getBoostedAmount(claimant, amount, previousAmount, totalWeekly);
+        adjustedAmount = boostCalculator.getBoostedAmount(claimant, amount, previousAmount, epochTotal);
         fee = (adjustedAmount * fee) / MAX_PCT;
 
         return (adjustedAmount, fee);
@@ -350,15 +350,15 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
         }
 
         uint256 lock;
-        uint256 weeklyAmount;
+        uint256 amount;
         uint256 unallocated = unallocatedTotal;
         while (epoch < currentEpoch) {
             ++epoch;
-            (weeklyAmount, lock) = _emissionSchedule.getTotalEpochEmissions(epoch, unallocated);
-            epochEmissions[epoch] = uint128(weeklyAmount);
+            (amount, lock) = _emissionSchedule.getTotalEpochEmissions(epoch, unallocated);
+            epochEmissions[epoch] = uint128(amount);
 
-            unallocated = unallocated - weeklyAmount;
-            emit UnallocatedSupplyReduced(weeklyAmount, unallocated);
+            unallocated = unallocated - amount;
+            emit UnallocatedSupplyReduced(amount, unallocated);
         }
 
         unallocatedTotal = uint128(unallocated);
@@ -490,7 +490,7 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
     ) internal {
         if (amount > 0) {
             uint256 epoch = getEpoch();
-            uint256 totalWeekly = epochEmissions[epoch];
+            uint256 epochTotal = epochEmissions[epoch];
             address claimant = boostDelegate == address(0) ? account : boostDelegate;
             uint256 previousAmount = accountEpochEarned[claimant][epoch];
 
@@ -502,7 +502,7 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
                 delegateCallback = data.callback;
                 require(data.isEnabled, "Invalid delegate");
                 if (data.feePct == type(uint16).max) {
-                    fee = delegateCallback.getFeePct(account, receiver, amount, previousAmount, totalWeekly);
+                    fee = delegateCallback.getFeePct(account, receiver, amount, previousAmount, epochTotal);
                     require(fee <= MAX_PCT, "Invalid delegate fee");
                 } else fee = data.feePct;
                 require(fee <= maxFeePct, "fee exceeds maxFeePct");
@@ -513,7 +513,7 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
                 claimant,
                 amount,
                 previousAmount,
-                totalWeekly
+                epochTotal
             );
             {
                 // remaining tokens from unboosted claims are added to the unallocated total
@@ -552,7 +552,7 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
                         adjustedAmount,
                         fee,
                         previousAmount,
-                        totalWeekly
+                        epochTotal
                     ),
                     "Delegate callback rejected"
                 );
@@ -562,15 +562,15 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
     }
 
     function _transferOrLock(address claimant, address receiver, uint256 amount) internal {
-        uint256 _lockWeeks = lockDuration;
-        if (_lockWeeks == 0) {
+        uint256 _lockDuration = lockDuration;
+        if (_lockDuration == 0) {
             storedPendingReward[claimant] = 0;
             govToken.transfer(receiver, amount);
         } else {
             // lock for receiver and store remaining balance in `storedPendingReward`
             uint256 lockAmount = amount / LOCK_TO_TOKEN_RATIO;
             storedPendingReward[claimant] = amount - lockAmount * LOCK_TO_TOKEN_RATIO;
-            if (lockAmount > 0) locker.lock(receiver, lockAmount, _lockWeeks);
+            if (lockAmount > 0) tokenLocker.lock(receiver, lockAmount, _lockDuration);
         }
     }
 

@@ -85,7 +85,7 @@ contract EmissionSchedule is IEmissionSchedule, BaseConfig, CoreOwnable, SystemS
 
     /**
         @dev Called by the vault exactly once per receiver each epoch, to get
-             weekly emissions for that specific receiver.
+             epoch emissions for that specific receiver.
      */
     function getReceiverEpochEmissions(
         uint256 id,
@@ -99,8 +99,7 @@ contract EmissionSchedule is IEmissionSchedule, BaseConfig, CoreOwnable, SystemS
     }
 
     /**
-        @dev Called exactly once per epoch by the vault, to get weekly emission
-             data for that epoch.
+        @dev Called exactly once per epoch by the vault, to get emission data for that epoch
      */
     function getTotalEpochEmissions(
         uint256 epoch,

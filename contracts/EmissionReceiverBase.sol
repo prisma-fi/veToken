@@ -97,7 +97,7 @@ abstract contract EmissionReceiverBase is IEmissionReceiver, SystemStart {
                 ongoing reward distribution happens without admin intervention
               * Can optionally be exposed via an extrnal `fetchRewards` function
      */
-    function _fetchWeeklyEmissions() internal returns (uint256 amount) {
+    function _fetchEpochEmissions() internal returns (uint256 amount) {
         uint256 id = receiverId;
         // do not try to allocate new emissions prior to the receiver being registered
         if (id != 0) {
