@@ -87,6 +87,14 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
     event EmissionScheduleSet(address emissionScheduler);
     event BoostCalculatorSet(address boostCalculator);
     event BoostDelegationSet(address indexed boostDelegate, bool isEnabled, uint256 feePct, address callback);
+    event RewardClaimed(
+        address indexed claimant,
+        address indexed receiver,
+        address indexed boostDelegate,
+        uint256 claimedAmount,
+        uint256 receivedAmount,
+        uint256 delegateFeeAmount
+    );
 
     constructor(
         address core,
@@ -549,6 +557,7 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
                     "Delegate callback rejected"
                 );
             }
+            emit RewardClaimed(account, receiver, boostDelegate, amount, adjustedAmount, fee);
         }
     }
 
