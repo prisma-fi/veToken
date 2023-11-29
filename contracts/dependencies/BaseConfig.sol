@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity 0.8.19;
+pragma solidity 0.8.23;
 
 abstract contract BaseConfig {
     // Maximum number of epochs that tokens may be locked for. Also determines the maximum number
