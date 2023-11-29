@@ -69,12 +69,46 @@ contract BoostCalculator is SystemStart {
     }
 
     /**
+        @notice Get information on account's boost for the current epoch
+        @param account Address to query boost data for
+        @param previousAmount Amount claimed by account in the current epoch
+        @param totalEpochEmissions Total emissions released this epoch
+        @return currentBoost Accounts's current boost, as a whole number where 10000 represents 1x
+        @return maxBoosted Total claimable amount this epoch that can recieve maximum boost
+        @return boosted Total claimable amount this epoch that can receive >1x boost.
+                        This value also includes the `maxBoosted` amount.
+     */
+    function getAccountBoostData(
+        address account,
+        uint256 previousAmount,
+        uint256 totalEpochEmissions
+    ) external view returns (uint256 currentBoost, uint256 maxBoosted, uint256 boosted) {
+        uint256 epoch = getEpoch();
+        if (epoch < MAX_BOOST_GRACE_EPOCHS) {
+            uint256 remaining = totalEpochEmissions - previousAmount;
+            return (20000, remaining, remaining);
+        }
+        epoch -= 1;
+
+        uint256 accountWeight = tokenLocker.getAccountWeightAt(account, epoch);
+        uint256 totalWeight = tokenLocker.getTotalWeightAt(epoch);
+        if (totalWeight == 0) totalWeight = 1;
+        uint256 pct = (1e9 * accountWeight) / totalWeight;
+        if (pct == 0) return (10000, 0, 0);
+
+        uint256 maxBoostable = (totalEpochEmissions * pct) / 1e9;
+        uint256 fullDecay = maxBoostable * 2;
+
+        return (_getBoostedAmount(20000, previousAmount, totalEpochEmissions, pct), maxBoosted, fullDecay);
+    }
+
+    /**
         @notice Get the adjusted claim amount after applying an account's boost
         @param account Address claiming the reward
         @param amount Amount being claimed (assuming maximum boost)
         @param previousAmount Amount that was already claimed in the current epoch
-        @param totalEpochEmissions Total PRISMA emissions released this epoch
-        @return adjustedAmount Amount of PRISMA received after applying boost
+        @param totalEpochEmissions Total emissions released this epoch
+        @return adjustedAmount Amount of received after applying boost
      */
     function getBoostedAmount(
         address account,
@@ -92,41 +126,6 @@ contract BoostCalculator is SystemStart {
         uint256 pct = (1e9 * accountWeight) / totalWeight;
         if (pct == 0) pct = 1;
         return _getBoostedAmount(amount, previousAmount, totalEpochEmissions, pct);
-    }
-
-    /**
-        @notice Get the remaining claimable amounts this epoch that will receive boost
-        @param claimant address to query boost amounts for
-        @param previousAmount Amount that was already claimed in the current epoch
-        @param totalEpochEmissions Total PRISMA emissions released this epoch
-        @return maxBoosted remaining claimable amount that will receive max boost
-        @return boosted remaining claimable amount that will receive some amount of boost (including max boost)
-     */
-    function getClaimableWithBoost(
-        address claimant,
-        uint256 previousAmount,
-        uint256 totalEpochEmissions
-    ) external view returns (uint256 maxBoosted, uint256 boosted) {
-        uint256 epoch = getEpoch();
-        if (epoch < MAX_BOOST_GRACE_EPOCHS) {
-            uint256 remaining = totalEpochEmissions - previousAmount;
-            return (remaining, remaining);
-        }
-        epoch -= 1;
-
-        uint256 accountWeight = tokenLocker.getAccountWeightAt(claimant, epoch);
-        uint256 totalWeight = tokenLocker.getTotalWeightAt(epoch);
-        if (totalWeight == 0) totalWeight = 1;
-        uint256 pct = (1e9 * accountWeight) / totalWeight;
-        if (pct == 0) return (0, 0);
-
-        uint256 maxBoostable = (totalEpochEmissions * pct) / 1e9;
-        uint256 fullDecay = maxBoostable * 2;
-
-        return (
-            previousAmount >= maxBoostable ? 0 : maxBoostable - previousAmount,
-            previousAmount >= fullDecay ? 0 : fullDecay - maxBoostable
-        );
     }
 
     /**

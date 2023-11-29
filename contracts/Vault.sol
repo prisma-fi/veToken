@@ -563,19 +563,6 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
     }
 
     /**
-        @notice Get the remaining claimable amounts this epoch that will receive boost
-        @param claimant address to query boost amounts for
-        @return maxBoosted remaining claimable amount that will receive max boost
-        @return boosted remaining claimable amount that will receive some amount of boost (including max boost)
-     */
-    function getClaimableWithBoost(address claimant) external view returns (uint256 maxBoosted, uint256 boosted) {
-        uint256 epoch = getEpoch();
-        uint256 totalWeekly = epochEmissions[epoch];
-        uint256 previousAmount = accountEpochEarned[claimant][epoch];
-        return boostCalculator.getClaimableWithBoost(claimant, previousAmount, totalWeekly);
-    }
-
-    /**
         @notice Get the claimable amount that `claimant` has earned boost delegation fees
      */
     function claimableBoostDelegationFees(address claimant) external view returns (uint256 amount) {
@@ -590,5 +577,23 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
      */
     function getExpectedNextEpochEmissions() external view returns (uint256) {
         return emissionSchedule.getExpectedNextEpochEmissions(getEpoch() + 1, unallocatedTotal);
+    }
+
+    /**
+        @notice Get information on account's boost for the current epoch
+        @return currentBoost Accounts's current boost, as a whole number where 10000 represents 1x
+        @return claimed Amount claimed so far this epoch (without any adjustments for boost)
+        @return maxBoosted Total claimable amount this epoch that can recieve maximum boost
+        @return boosted Total claimable amount this epoch that can receive >1x boost.
+                        This value also includes the `maxBoosted` amount.
+     */
+    function getAccountBoostData(
+        address account
+    ) external view returns (uint256 currentBoost, uint256 claimed, uint256 maxBoosted, uint256 boosted) {
+        uint256 epoch = getEpoch();
+        uint256 epochTotal = epochEmissions[epoch];
+        uint256 previousAmount = accountEpochEarned[account][epoch];
+        (currentBoost, maxBoosted, boosted) = boostCalculator.getAccountBoostData(account, previousAmount, epochTotal);
+        return (currentBoost, previousAmount, maxBoosted, boosted);
     }
 }

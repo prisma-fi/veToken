@@ -19,11 +19,11 @@ interface IBoostCalculator {
         uint256 totalEpochEmissions
     ) external view returns (uint256 adjustedAmount);
 
-    function getClaimableWithBoost(
+    function getAccountBoostData(
         address claimant,
         uint256 previousAmount,
         uint256 totalEpochEmissions
-    ) external view returns (uint256 maxBoosted, uint256 boosted);
+    ) external view returns (uint256 currentBoost, uint256 maxBoosted, uint256 boosted);
 
     function getEpoch() external view returns (uint256 epoch);
 
