@@ -2,6 +2,9 @@
 
 pragma solidity ^0.8.0;
 
+/**
+    @dev Minimal interface required for `EmissionSchedule` implementation
+ */
 interface IEmissionSchedule {
     function getReceiverEpochEmissions(
         uint256 id,

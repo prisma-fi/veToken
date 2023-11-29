@@ -4,6 +4,7 @@ pragma solidity 0.8.19;
 
 import "./dependencies/SystemStart.sol";
 import "./interfaces/IVault.sol";
+import "./interfaces/IEmissionReceiver.sol";
 
 /**
     @title Emission Receiver Abstract Base
@@ -15,7 +16,7 @@ import "./interfaces/IVault.sol";
             See the Prisma Finance repo for examples of how you can implement
             receivers: https://github.com/prisma-fi/prisma-contracts
  */
-abstract contract EmissionReceiverBase is SystemStart {
+abstract contract EmissionReceiverBase is IEmissionReceiver, SystemStart {
     IVault public immutable vault;
 
     uint256 private emissionUpdateEpoch;

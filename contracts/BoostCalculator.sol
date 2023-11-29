@@ -2,6 +2,7 @@
 
 pragma solidity 0.8.19;
 
+import "./interfaces/IBoostCalculator.sol";
 import "./interfaces/ITokenLocker.sol";
 import "./dependencies/SystemStart.sol";
 
@@ -50,7 +51,7 @@ import "./dependencies/SystemStart.sol";
             are returned to the unallocated token supply, and distributed again in the
             emissions of future epochs.
  */
-contract BoostCalculator is SystemStart {
+contract BoostCalculator is IBoostCalculator, SystemStart {
     ITokenLocker public immutable tokenLocker;
 
     // initial number of epochs where all accounts recieve max boost

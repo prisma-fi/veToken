@@ -2,6 +2,9 @@
 
 pragma solidity ^0.8.0;
 
+/**
+    @dev Minimal interface required for `BoostCalculator` implementation
+ */
 interface IBoostCalculator {
     function getBoostedAmountWrite(
         address account,
@@ -24,8 +27,4 @@ interface IBoostCalculator {
         uint256 previousAmount,
         uint256 totalEpochEmissions
     ) external view returns (uint256 currentBoost, uint256 maxBoosted, uint256 boosted);
-
-    function getEpoch() external view returns (uint256 epoch);
-
-    function locker() external view returns (address);
 }

@@ -2,8 +2,8 @@
 
 pragma solidity 0.8.19;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "./interfaces/IIncentiveVoting.sol";
+import "./interfaces/IEmissionSchedule.sol";
 import "./dependencies/CoreOwnable.sol";
 import "./dependencies/BaseConfig.sol";
 import "./dependencies/SystemStart.sol";
@@ -17,7 +17,7 @@ import "./dependencies/SystemStart.sol";
             reward rate will decay to dust as it approaches the maximum supply,
             but should not reach zero for a Very Long Time.
  */
-contract EmissionSchedule is BaseConfig, CoreOwnable, SystemStart {
+contract EmissionSchedule is IEmissionSchedule, BaseConfig, CoreOwnable, SystemStart {
     event EpochPctScheduleSet(uint64[2][] schedule);
     event LockParametersSet(uint256 lockDuration, uint256 lockDecayEpochs);
 
