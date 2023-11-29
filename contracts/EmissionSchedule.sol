@@ -133,6 +133,27 @@ contract EmissionSchedule is BaseConfig, CoreOwnable, SystemStart {
         return (amount, lock);
     }
 
+    /**
+        @dev View method implementation of `getTotalEpochEmissions`, called via the vault.
+     */
+    function getExpectedNextEpochEmissions(
+        uint256 epoch,
+        uint256 unallocatedTotal
+    ) external view returns (uint256 amount) {
+        // check for and apply scheduled update to `perEpochPct`
+        uint256 length = scheduledEpochPct.length;
+        uint256 pct = perEpochPct;
+        if (length > 0) {
+            uint64[2] memory nextUpdate = scheduledEpochPct[length - 1];
+            if (nextUpdate[0] == epoch) pct = nextUpdate[1];
+        }
+
+        // calculate the epoch emissions as a percentage of the unallocated supply
+        amount = (unallocatedTotal * pct) / MAX_PCT;
+
+        return amount;
+    }
+
     function _setEpochPctSchedule(uint64[2][] memory _scheduledEpochPct) internal {
         uint256 length = _scheduledEpochPct.length;
         if (length > 0) {

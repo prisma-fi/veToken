@@ -13,4 +13,9 @@ interface IEmissionSchedule {
         uint256 epoch,
         uint256 unallocatedTotal
     ) external returns (uint256 amount, uint256 lock);
+
+    function getExpectedNextEpochEmissions(
+        uint256 epoch,
+        uint256 unallocatedTotal
+    ) external view returns (uint256 amount);
 }

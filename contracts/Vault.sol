@@ -583,4 +583,12 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
         // only return values `>= LOCK_TO_TOKEN_RATIO` so we do not report "dust" stored for normal users
         return amount >= LOCK_TO_TOKEN_RATIO ? amount : 0;
     }
+
+    /**
+        @notice Get the current expected total emissions for the next epoch
+        @dev Changes to `unallocatedTotal` during the epoch can affect this number
+     */
+    function getExpectedNextEpochEmissions() external view returns (uint256) {
+        return emissionSchedule.getExpectedNextEpochEmissions(getEpoch() + 1, unallocatedTotal);
+    }
 }
