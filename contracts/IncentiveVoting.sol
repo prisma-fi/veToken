@@ -152,7 +152,7 @@ contract IncentiveVoting is BaseConfig, DelegatedOps, SystemStart {
     }
 
     function getReceiverWeightWrite(uint256 idx) public returns (uint256) {
-        require(idx != 0 && idx < receiverCount, "Invalid ID");
+        require(idx != 0 && idx <= receiverCount, "Invalid ID");
         uint256 epoch = getEpoch();
         uint256 updatedEpoch = receiverUpdatedEpoch[idx];
         uint256 weight = receiverEpochWeights[idx][updatedEpoch];
