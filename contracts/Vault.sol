@@ -485,18 +485,22 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
         @param account Address claiming rewards
         @param boostDelegate Address to delegate boost from when claiming. Set as
                              `address(0)` to use the boost of the claimer.
-        @param rewardContract Address of the contract where rewards are being claimed
+        @param rewardContracts Array of addresses of receiver contracts where the caller has
+                               rewards to claim.
         @return adjustedAmount Amount received after boost, prior to paying delegate fee
         @return feeToDelegate Fee amount paid to `boostDelegate`
 
      */
-    function getClaimableRewardAfterBoost(
+    function getAdjustedClaimableReward(
         address account,
         address receiver,
         address boostDelegate,
-        IEmissionReceiver rewardContract
+        IEmissionReceiver[] calldata rewardContracts
     ) external view returns (uint256 adjustedAmount, uint256 feeToDelegate) {
-        uint256 amount = rewardContract.claimableReward(account);
+        uint256 amount;
+        for (uint i = 0; i < rewardContracts.length; i++) {
+            amount += rewardContracts[i].claimableReward(account);
+        }
         uint256 epoch = getEpoch();
         uint256 totalWeekly = epochEmissions[epoch];
         address claimant = boostDelegate == address(0) ? account : boostDelegate;
