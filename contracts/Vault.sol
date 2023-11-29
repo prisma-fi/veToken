@@ -12,16 +12,7 @@ import "./interfaces/IIncentiveVoting.sol";
 import "./interfaces/ITokenLocker.sol";
 import "./interfaces/IBoostDelegate.sol";
 import "./interfaces/IBoostCalculator.sol";
-
-interface IEmissionReceiver {
-    function notifyRegisteredId(uint256[] memory assignedIds) external returns (bool);
-}
-
-interface IRewards {
-    function vaultClaimReward(address claimant, address receiver) external returns (uint256);
-
-    function claimableReward(address account) external view returns (uint256);
-}
+import "./interfaces/IEmissionReceiver.sol";
 
 /**
     @title Vault
@@ -368,7 +359,7 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
     function batchClaimRewards(
         address receiver,
         address boostDelegate,
-        IRewards[] calldata rewardContracts,
+        IEmissionReceiver[] calldata rewardContracts,
         uint256 maxFeePct
     ) external returns (bool) {
         require(maxFeePct <= 10000, "Invalid maxFeePct");
@@ -499,11 +490,11 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
         @return feeToDelegate Fee amount paid to `boostDelegate`
 
      */
-    function claimableRewardAfterBoost(
+    function getClaimableRewardAfterBoost(
         address account,
         address receiver,
         address boostDelegate,
-        IRewards rewardContract
+        IEmissionReceiver rewardContract
     ) external view returns (uint256 adjustedAmount, uint256 feeToDelegate) {
         uint256 amount = rewardContract.claimableReward(account);
         uint256 epoch = getEpoch();
