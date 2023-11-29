@@ -30,7 +30,7 @@ interface IRewards {
             vault gradually releases tokens to registered emissions receivers
             as determined by `EmissionSchedule` and `BoostCalculator`.
  */
-contract Vault is CoreOwnable, SystemStart {
+contract Vault is BaseConfig, CoreOwnable, SystemStart {
     using Address for address;
     using SafeERC20 for IERC20;
 
@@ -62,7 +62,7 @@ contract Vault is CoreOwnable, SystemStart {
     uint128[65535] public epochEmissions;
 
     // receiver -> remaining tokens which have been allocated but not yet distributed
-    mapping(address => uint256) public allocated;
+    mapping(address => uint256) public receiverAllocated;
 
     // account -> epoch -> govToken amount claimed in that epoch (used for calculating boost)
     mapping(address => uint128[65535]) accountEpochEarned;
@@ -74,7 +74,7 @@ contract Vault is CoreOwnable, SystemStart {
 
     struct Receiver {
         address account;
-        bool isActive;
+        uint16 maxEmissionPct;
     }
 
     struct Delegation {
@@ -89,10 +89,10 @@ contract Vault is CoreOwnable, SystemStart {
     }
 
     event NewReceiverRegistered(address receiver, uint256 id);
-    event ReceiverIsActiveStatusModified(uint256 indexed id, bool isActive);
+    event ReceiverMaxEmissionPctSet(uint256 indexed id, uint256 maxPct);
     event UnallocatedSupplyReduced(uint256 reducedAmount, uint256 unallocatedTotal);
     event UnallocatedSupplyIncreased(uint256 increasedAmount, uint256 unallocatedTotal);
-    event IncreasedAllocation(address indexed receiver, uint256 increasedAmount);
+    event IncreasedReceiverAllocation(address indexed receiver, uint256 increasedAmount);
     event EmissionScheduleSet(address emissionScheduler);
     event BoostCalculatorSet(address boostCalculator);
     event BoostDelegationSet(address indexed boostDelegate, bool isEnabled, uint256 feePct, address callback);
@@ -155,15 +155,25 @@ contract Vault is CoreOwnable, SystemStart {
              starting from 1. An ID of 0 is considered unset.
         @param receiver Address of the receiver
         @param count Number of IDs to assign to the receiver
+        @param maxEmissionPct Array of maximum percent of emissions for each new receiver.
+                              Can be left empty for receivers that are not restricted.
      */
-    function registerReceiver(address receiver, uint256 count) external onlyOwner returns (bool) {
+    function registerReceiver(
+        address receiver,
+        uint256 count,
+        uint256[] calldata maxEmissionPct
+    ) external onlyOwner returns (bool) {
+        require(maxEmissionPct.length == count, "Invalid maxEmissionPct.length");
         uint256[] memory assignedIds = new uint256[](count);
         uint16 epoch = uint16(getEpoch());
         for (uint256 i = 0; i < count; i++) {
+            uint256 maxPct = maxEmissionPct[i];
+            if (maxPct == 0) maxPct = MAX_PCT;
+            else require(maxPct <= MAX_PCT, "Invalid maxEmissionPct");
             uint256 id = voter.registerNewReceiver();
             assignedIds[i] = id;
             receiverUpdatedEpoch[id] = epoch;
-            idToReceiver[id] = Receiver({ account: receiver, isActive: true });
+            idToReceiver[id] = Receiver({ account: receiver, maxEmissionPct: uint16(maxPct) });
             emit NewReceiverRegistered(receiver, id);
         }
         // notify the receiver contract of the newly registered ID
@@ -178,19 +188,22 @@ contract Vault is CoreOwnable, SystemStart {
     }
 
     /**
-        @notice Modify the active status of an existing receiver
-        @dev Emissions directed to an inactive receiver are instead returned to
+        @notice Set the max emission percent a receiver is eligible to receiver each epoch
+        @dev Excess emissions directed to a receiver are instead returned to
              the unallocated supply. This way potential emissions are not lost
              due to old emissions votes pointing at a receiver that was phased out.
-        @param id ID of the receiver to modify the isActive status for
-        @param isActive is this receiver eligible to receive emissions?
+             Receivers are effectively removed by setting the max percent to zero.
+        @param id ID of the receiver to modify the max emission percent for
+        @param maxEmissionPct Maximum percent of emissions received per epoch
+                              as a whole number out of MAX_PCT
      */
-    function setReceiverIsActive(uint256 id, bool isActive) external onlyOwner returns (bool) {
+    function setReceiverMaxEmissionPct(uint256 id, uint256 maxEmissionPct) external onlyOwner returns (bool) {
+        require(maxEmissionPct <= MAX_PCT, "Invalid maxEmissionPct");
         Receiver memory receiver = idToReceiver[id];
         require(receiver.account != address(0), "ID not set");
-        receiver.isActive = isActive;
+        receiver.maxEmissionPct = uint16(MAX_PCT);
         idToReceiver[id] = receiver;
-        emit ReceiverIsActiveStatusModified(id, isActive);
+        emit ReceiverMaxEmissionPctSet(id, maxEmissionPct);
 
         return true;
     }
@@ -293,24 +306,35 @@ contract Vault is CoreOwnable, SystemStart {
             return 0;
         }
 
-        uint256 amount;
+        uint256 maxPct = receiver.maxEmissionPct;
+        uint256 allocated;
+        uint256 unallocated;
         while (epoch < currentEpoch) {
             ++epoch;
-            amount = amount + _emissionSchedule.getReceiverEpochEmissions(id, epoch, epochEmissions[epoch]);
+            uint256 totalEpochEmissions = epochEmissions[epoch];
+            uint256 epochAmount = _emissionSchedule.getReceiverEpochEmissions(id, epoch, totalEpochEmissions);
+            if (maxPct < MAX_PCT) {
+                uint256 cappedAmount = (totalEpochEmissions * maxPct) / MAX_PCT;
+                if (epochAmount > cappedAmount) {
+                    unallocated += epochAmount - cappedAmount;
+                    epochAmount = cappedAmount;
+                }
+            }
+            allocated = allocated + epochAmount;
         }
 
         receiverUpdatedEpoch[id] = uint16(currentEpoch);
-        if (receiver.isActive) {
-            allocated[msg.sender] = allocated[msg.sender] + amount;
-            emit IncreasedAllocation(msg.sender, amount);
-            return amount;
-        } else {
-            // if receiver is not active, return allocation to the unallocated supply
-            uint256 unallocated = unallocatedTotal + amount;
-            unallocatedTotal = uint128(unallocated);
-            emit UnallocatedSupplyIncreased(amount, unallocated);
-            return 0;
+
+        if (allocated > 0) {
+            receiverAllocated[msg.sender] = receiverAllocated[msg.sender] + allocated;
+            emit IncreasedReceiverAllocation(msg.sender, allocated);
         }
+        if (unallocated > 0) {
+            uint256 newUnallocatedTotal = unallocatedTotal + unallocated;
+            unallocatedTotal = uint128(newUnallocatedTotal);
+            emit UnallocatedSupplyIncreased(unallocated, newUnallocatedTotal);
+        }
+        return allocated;
     }
 
     /**
@@ -324,7 +348,7 @@ contract Vault is CoreOwnable, SystemStart {
      */
     function transferAllocatedTokens(address claimant, address receiver, uint256 amount) external returns (bool) {
         if (amount > 0) {
-            allocated[msg.sender] -= amount;
+            receiverAllocated[msg.sender] -= amount;
             _transferAllocated(0, claimant, receiver, address(0), amount);
         }
         return true;
@@ -353,7 +377,7 @@ contract Vault is CoreOwnable, SystemStart {
         uint256 length = rewardContracts.length;
         for (uint256 i = 0; i < length; i++) {
             uint256 amount = rewardContracts[i].vaultClaimReward(msg.sender, receiver);
-            allocated[address(rewardContracts[i])] -= amount;
+            receiverAllocated[address(rewardContracts[i])] -= amount;
             total += amount;
         }
         _transferAllocated(maxFeePct, msg.sender, receiver, boostDelegate, total);
