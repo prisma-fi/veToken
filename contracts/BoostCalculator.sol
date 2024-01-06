@@ -100,7 +100,7 @@ contract BoostCalculator is IBoostCalculator, SystemStart {
         uint256 maxBoostable = (totalEpochEmissions * pct) / 1e9;
         uint256 fullDecay = maxBoostable * 2;
 
-        return (_getBoostedAmount(20000, previousAmount, totalEpochEmissions, pct), maxBoosted, fullDecay);
+        return (_getBoostedAmount(20000, previousAmount, totalEpochEmissions, pct), maxBoostable, fullDecay);
     }
 
     /**
