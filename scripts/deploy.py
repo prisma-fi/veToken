@@ -63,6 +63,19 @@ EPOCH_PCT_SCHEDULE = [(13, 0.9), (26, 0.8), (39, 0.7), (52, 0.5)]
 # epoch users have not have a chance to lock yet
 BOOST_GRACE_EPOCHS = 2
 
+# max boost multiplier
+MAX_BOOST_MULTIPLIER = 2
+
+# percentage of the total epoch emissions that an account can claim with max
+# boost, expressed as a percent relative to the account's percent of the total
+# lock weight. For example, if an account has 5% of the lock weight and the
+# max boostable percent is 150, the account can claim 7.5% (5% * 150%) of the
+# epoch's emissions at a max boost.
+MAX_BOOSTABLE_PCT = 100
+
+# percentage of the total epoch emissions that an account can claim with decaying boost
+DECAY_BOOST_PCT = 100
+
 
 def main():
     deployer = accounts[0]
@@ -96,7 +109,15 @@ def main():
         ALLOWANCES,
         {"from": deployer},
     )
-    boost = BoostCalculator.deploy(core, locker, BOOST_GRACE_EPOCHS, {"from": deployer})
+    boost = BoostCalculator.deploy(
+        core,
+        locker,
+        BOOST_GRACE_EPOCHS,
+        MAX_BOOST_MULTIPLIER,
+        MAX_BOOSTABLE_PCT,
+        DECAY_BOOST_PCT,
+        {"from": deployer},
+    )
 
     max_pct = voter.MAX_PCT()
     pct_schedule = [(i[0], max_pct * i[1] // 100) for i in EPOCH_PCT_SCHEDULE[::-1]]
