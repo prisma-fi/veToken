@@ -14,6 +14,8 @@ interface IBoostDelegate {
         @dev Optional. Only called if the feePct is set to `type(uint16).max` when
              enabling delegation.
         @param claimant Address that will perform the claim
+        @param receiver Address that will receiving the claimed rewards
+        @param boostDelegate Address being delegated delegated to
         @param amount Amount to be claimed (before applying boost or fee)
         @param previousAmount Previous amount claimed this epoch by this contract
         @param totalEpochEmissions Total emissions released this epoch
