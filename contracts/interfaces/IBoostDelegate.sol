@@ -24,6 +24,7 @@ interface IBoostDelegate {
     function getFeePct(
         address claimant,
         address receiver,
+        address boostDelegate,
         uint amount,
         uint previousAmount,
         uint totalEpochEmissions

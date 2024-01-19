@@ -211,9 +211,9 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
             if (!data.isEnabled) return (0, 0);
             fee = data.feePct;
             if (fee == type(uint16).max) {
-                try data.callback.getFeePct(claimant, receiver, amount, previousAmount, epochTotal) returns (
-                    uint256 _fee
-                ) {
+                try
+                    data.callback.getFeePct(claimant, receiver, boostDelegate, amount, previousAmount, epochTotal)
+                returns (uint256 _fee) {
                     fee = _fee;
                 } catch {
                     return (0, 0);
@@ -502,7 +502,14 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
                 delegateCallback = data.callback;
                 require(data.isEnabled, "Invalid delegate");
                 if (data.feePct == type(uint16).max) {
-                    fee = delegateCallback.getFeePct(account, receiver, amount, previousAmount, epochTotal);
+                    fee = delegateCallback.getFeePct(
+                        account,
+                        receiver,
+                        boostDelegate,
+                        amount,
+                        previousAmount,
+                        epochTotal
+                    );
                     require(fee <= MAX_PCT, "Invalid delegate fee");
                 } else fee = data.feePct;
                 require(fee <= maxFeePct, "fee exceeds maxFeePct");
