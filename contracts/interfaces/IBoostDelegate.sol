@@ -45,7 +45,7 @@ interface IBoostDelegate {
         @param previousAmount Previous amount claimed this epoch by this contract
         @param totalEpochEmissions Total emissions released this epoch
      */
-    function delegatedBoostCallback(
+    function delegateCallback(
         address claimant,
         address receiver,
         address boostDelegate,
@@ -54,5 +54,12 @@ interface IBoostDelegate {
         uint fee,
         uint previousAmount,
         uint totalEpochEmissions
+    ) external returns (bool success);
+
+    function receiverCallback(
+        address claimant,
+        address receiver,
+        address boostDelegate,
+        uint amount
     ) external returns (bool success);
 }

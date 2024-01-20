@@ -69,7 +69,9 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
     }
 
     struct Delegation {
-        bool isEnabled;
+        bool isDelegationEnabled;
+        bool hasDelegateCallback;
+        bool hasReceiverCallback;
         uint16 feePct;
         IBoostDelegate callback;
     }
@@ -86,7 +88,14 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
     event IncreasedReceiverAllocation(address indexed receiver, uint256 increasedAmount);
     event EmissionScheduleSet(address emissionScheduler);
     event BoostCalculatorSet(address boostCalculator);
-    event BoostDelegationSet(address indexed boostDelegate, bool isEnabled, uint256 feePct, address callback);
+    event BoostDelegationSet(
+        address indexed boostDelegate,
+        bool isDelegationEnabled,
+        bool hasDelegateCallback,
+        bool hasReceiverCallback,
+        uint256 feePct,
+        address indexed callback
+    );
     event RewardClaimed(
         address indexed claimant,
         address indexed receiver,
@@ -208,7 +217,7 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
         uint256 fee;
         if (boostDelegate != address(0)) {
             Delegation memory data = boostDelegation[boostDelegate];
-            if (!data.isEnabled) return (0, 0);
+            if (!data.isDelegationEnabled) return (0, 0);
             fee = data.feePct;
             if (fee == type(uint16).max) {
                 try
@@ -499,20 +508,14 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
             IBoostDelegate delegateCallback;
             if (boostDelegate != address(0)) {
                 Delegation memory data = boostDelegation[boostDelegate];
-                delegateCallback = data.callback;
-                require(data.isEnabled, "Invalid delegate");
+
+                require(data.isDelegationEnabled, "Invalid delegate");
                 if (data.feePct == type(uint16).max) {
-                    fee = delegateCallback.getFeePct(
-                        account,
-                        receiver,
-                        boostDelegate,
-                        amount,
-                        previousAmount,
-                        epochTotal
-                    );
+                    fee = data.callback.getFeePct(account, receiver, boostDelegate, amount, previousAmount, epochTotal);
                     require(fee <= MAX_PCT, "Invalid delegate fee");
                 } else fee = data.feePct;
                 require(fee <= maxFeePct, "fee exceeds maxFeePct");
+                if (data.hasDelegateCallback) delegateCallback = data.callback;
             }
 
             // calculate adjusted amount with actual boost applied
@@ -547,11 +550,11 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
 
             _transferOrLock(account, receiver, adjustedAmount);
 
-            // apply delegate fee and optionally perform callback
+            // apply delegate fee and optionally perform delegate callback
             if (fee != 0) storedPendingReward[boostDelegate] += fee;
             if (address(delegateCallback) != address(0)) {
                 require(
-                    delegateCallback.delegatedBoostCallback(
+                    delegateCallback.delegateCallback(
                         account,
                         receiver,
                         boostDelegate,
@@ -563,6 +566,16 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
                     ),
                     "Delegate callback rejected"
                 );
+            }
+            // if claimant is not receiver, optionally perform receiver callback
+            if (account != receiver) {
+                Delegation memory data = boostDelegation[receiver];
+                if (data.hasReceiverCallback) {
+                    require(
+                        data.callback.receiverCallback(account, receiver, boostDelegate, adjustedAmount),
+                        "Receiver callback rejected"
+                    );
+                }
             }
             emit RewardClaimed(account, receiver, boostDelegate, amount, adjustedAmount, fee);
         }
@@ -590,21 +603,35 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
         @param callback Optional contract address to receive a callback each time a claim is
                         made which delegates to the caller's boost.
      */
-    function setBoostDelegationParams(bool isEnabled, uint256 feePct, address callback) external returns (bool) {
+    function setBoostDelegationParams(
+        bool isEnabled,
+        bool hasDelegateCallback,
+        bool hasReceiverCallback,
+        uint256 feePct,
+        address callback
+    ) external returns (bool) {
+        if (hasDelegateCallback || hasReceiverCallback || feePct == type(uint16).max) {
+            require(callback.isContract(), "Callback must be a contract");
+        }
         if (isEnabled) {
             require(feePct <= MAX_PCT || feePct == type(uint16).max, "Invalid feePct");
-            if (callback != address(0) || feePct == type(uint16).max) {
-                require(callback.isContract(), "Callback must be a contract");
-            }
             boostDelegation[msg.sender] = Delegation({
-                isEnabled: true,
+                isDelegationEnabled: true,
+                hasDelegateCallback: hasDelegateCallback,
+                hasReceiverCallback: hasReceiverCallback,
                 feePct: uint16(feePct),
                 callback: IBoostDelegate(callback)
             });
         } else {
-            delete boostDelegation[msg.sender];
+            boostDelegation[msg.sender] = Delegation({
+                isDelegationEnabled: false,
+                hasDelegateCallback: false,
+                hasReceiverCallback: hasReceiverCallback,
+                feePct: 0,
+                callback: IBoostDelegate(callback)
+            });
         }
-        emit BoostDelegationSet(msg.sender, isEnabled, feePct, callback);
+        emit BoostDelegationSet(msg.sender, isEnabled, hasDelegateCallback, hasReceiverCallback, feePct, callback);
 
         return true;
     }
