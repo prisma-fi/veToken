@@ -3,7 +3,7 @@
 pragma solidity ^0.8.0;
 
 /**
-    @title Prisma Boost Callback Interface
+    @title Boost Callback Interface
     @notice When enabling boost delegation via `Vault.setBoostDelegationParams`,
             you may optionally set a `callback` contract. If set, it should adhere
             to the following interface.
@@ -34,8 +34,8 @@ interface IBoostCallback {
 
     /**
         @notice Callback function for boost delegators
-        @dev MUST BE INCLUDED. Called after each successful claim which used
-             this contract's delegated boost.
+        @dev Optional. Only called if `hasDelegateCallback` is set to true when
+             enabling delegation.
         @param claimant Address that performed the claim
         @param receiver Address receiving the claimed rewards
         @param boostDelegate Address that was delegated to
@@ -44,6 +44,7 @@ interface IBoostCallback {
         @param fee Fee amount paid by `claimant`
         @param previousAmount Previous amount claimed this epoch by this contract
         @param totalEpochEmissions Total emissions released this epoch
+        @return success Must return true or the transaction will revert
      */
     function delegateCallback(
         address claimant,
@@ -56,6 +57,15 @@ interface IBoostCallback {
         uint totalEpochEmissions
     ) external returns (bool success);
 
+    /**
+        @notice Callback function for emission receivers
+        @dev Optional. Only called if `hasReceiverCallback` is set to true.
+        @param claimant Address that performed the claim
+        @param receiver Address receiving the claimed rewards
+        @param boostDelegate Address that was delegated to
+        @param amount Amount that was received (after applying boost and fees)
+        @return success Must return true or the transaction will revert
+     */
     function receiverCallback(
         address claimant,
         address receiver,

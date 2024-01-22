@@ -600,17 +600,24 @@ contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
     }
 
     /**
-        @notice Enable or disable boost delegation, and set boost delegation parameters
-        @param isEnabled is boost delegation enabled?
+        @notice Enable or disable boost delegation, and set boost callback parameters
+        @param account Address to modify delegation params for
+        @param isDelegationEnabled is boost delegation enabled?
+        @param hasDelegateCallback If true, each time `account` is used as a boost delegate
+                                   a call is sent to `IBoostCallback(callback).delegateCallback`
+        @param hasReceiverCallback If true, each time `account` is used as a claim receiver
+                                   a call is sent to `IBoostCallback(callback).receiverCallback`.
+                                   Note that if enabled, the receiver callback occurs even if
+                                   delegation is not enabled.
         @param feePct Fee % charged when claims are made that delegate to the caller's boost.
                       Given as a whole number out of 10000. If set to type(uint16).max, the fee
                       is set by calling `IBoostCallback(callback).getFeePct` prior to each claim.
-        @param callback Optional contract address to receive a callback each time a claim is
-                        made which delegates to the caller's boost.
+        @param callback Optional contract address for feePct, receiver and delegate callbacks.
+                        Must adhere to the `IBoostCallback` interface.
      */
     function setBoostDelegationParams(
         address account,
-        bool isEnabled,
+        bool isDelegationEnabled,
         bool hasDelegateCallback,
         bool hasReceiverCallback,
         uint256 feePct,
@@ -619,7 +626,7 @@ contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
         if (hasDelegateCallback || hasReceiverCallback || feePct == type(uint16).max) {
             require(callback.isContract(), "Callback must be a contract");
         }
-        if (isEnabled) {
+        if (isDelegationEnabled) {
             require(feePct <= MAX_PCT || feePct == type(uint16).max, "Invalid feePct");
             boostDelegation[account] = Delegation({
                 isDelegationEnabled: true,
@@ -637,7 +644,14 @@ contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
                 callback: IBoostCallback(callback)
             });
         }
-        emit BoostDelegationSet(account, isEnabled, hasDelegateCallback, hasReceiverCallback, feePct, callback);
+        emit BoostDelegationSet(
+            account,
+            isDelegationEnabled,
+            hasDelegateCallback,
+            hasReceiverCallback,
+            feePct,
+            callback
+        );
 
         return true;
     }
