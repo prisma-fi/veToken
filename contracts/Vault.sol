@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
 import "./dependencies/BaseConfig.sol";
 import "./dependencies/CoreOwnable.sol";
+import "./dependencies/DelegatedOps.sol";
 import "./dependencies/SystemStart.sol";
 import "./interfaces/IEmissionSchedule.sol";
 import "./interfaces/IIncentiveVoting.sol";
@@ -21,7 +22,7 @@ import "./interfaces/IEmissionReceiver.sol";
             vault gradually releases tokens to registered emissions receivers
             as determined by `EmissionSchedule` and `BoostCalculator`.
  */
-contract Vault is BaseConfig, CoreOwnable, SystemStart {
+contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
     using Address for address;
     using SafeERC20 for IERC20;
 
@@ -460,21 +461,22 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
         @return bool success
      */
     function batchClaimRewards(
+        address account,
         address receiver,
         address boostDelegate,
         IEmissionReceiver[] calldata rewardContracts,
         uint256 maxFeePct
-    ) external returns (bool) {
+    ) external callerOrDelegated(account) returns (bool) {
         require(maxFeePct <= MAX_PCT, "Invalid maxFeePct");
 
         uint256 total;
         uint256 length = rewardContracts.length;
         for (uint256 i = 0; i < length; i++) {
-            uint256 amount = rewardContracts[i].vaultClaimReward(msg.sender, receiver);
+            uint256 amount = rewardContracts[i].vaultClaimReward(account, receiver);
             receiverAllocated[address(rewardContracts[i])] -= amount;
             total += amount;
         }
-        _transferAllocated(maxFeePct, msg.sender, receiver, boostDelegate, total);
+        _transferAllocated(maxFeePct, account, receiver, boostDelegate, total);
         return true;
     }
 
@@ -483,10 +485,13 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
         @param receiver Address to transfer the tokens to
         @return bool Success
      */
-    function claimBoostDelegationFees(address receiver) external returns (bool) {
-        uint256 amount = storedPendingReward[msg.sender];
+    function claimBoostDelegationFees(
+        address account,
+        address receiver
+    ) external callerOrDelegated(account) returns (bool) {
+        uint256 amount = storedPendingReward[account];
         require(amount >= LOCK_TO_TOKEN_RATIO, "Nothing to claim");
-        _transferOrLock(msg.sender, receiver, amount);
+        _transferOrLock(account, receiver, amount);
         return true;
     }
 
@@ -604,18 +609,19 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
                         made which delegates to the caller's boost.
      */
     function setBoostDelegationParams(
+        address account,
         bool isEnabled,
         bool hasDelegateCallback,
         bool hasReceiverCallback,
         uint256 feePct,
         address callback
-    ) external returns (bool) {
+    ) external callerOrDelegated(account) returns (bool) {
         if (hasDelegateCallback || hasReceiverCallback || feePct == type(uint16).max) {
             require(callback.isContract(), "Callback must be a contract");
         }
         if (isEnabled) {
             require(feePct <= MAX_PCT || feePct == type(uint16).max, "Invalid feePct");
-            boostDelegation[msg.sender] = Delegation({
+            boostDelegation[account] = Delegation({
                 isDelegationEnabled: true,
                 hasDelegateCallback: hasDelegateCallback,
                 hasReceiverCallback: hasReceiverCallback,
@@ -623,7 +629,7 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
                 callback: IBoostDelegate(callback)
             });
         } else {
-            boostDelegation[msg.sender] = Delegation({
+            boostDelegation[account] = Delegation({
                 isDelegationEnabled: false,
                 hasDelegateCallback: false,
                 hasReceiverCallback: hasReceiverCallback,
@@ -631,7 +637,7 @@ contract Vault is BaseConfig, CoreOwnable, SystemStart {
                 callback: IBoostDelegate(callback)
             });
         }
-        emit BoostDelegationSet(msg.sender, isEnabled, hasDelegateCallback, hasReceiverCallback, feePct, callback);
+        emit BoostDelegationSet(account, isEnabled, hasDelegateCallback, hasReceiverCallback, feePct, callback);
 
         return true;
     }
