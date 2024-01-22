@@ -11,7 +11,7 @@ import "./dependencies/SystemStart.sol";
 import "./interfaces/IEmissionSchedule.sol";
 import "./interfaces/IIncentiveVoting.sol";
 import "./interfaces/ITokenLocker.sol";
-import "./interfaces/IBoostDelegate.sol";
+import "./interfaces/IBoostCallback.sol";
 import "./interfaces/IBoostCalculator.sol";
 import "./interfaces/IEmissionReceiver.sol";
 
@@ -74,7 +74,7 @@ contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
         bool hasDelegateCallback;
         bool hasReceiverCallback;
         uint16 feePct;
-        IBoostDelegate callback;
+        IBoostCallback callback;
     }
 
     struct InitialAllowance {
@@ -510,7 +510,7 @@ contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
 
             // if boost delegation is active, get the fee and optional callback address
             uint256 fee;
-            IBoostDelegate delegateCallback;
+            IBoostCallback delegateCallback;
             if (boostDelegate != address(0)) {
                 Delegation memory data = boostDelegation[boostDelegate];
 
@@ -604,7 +604,7 @@ contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
         @param isEnabled is boost delegation enabled?
         @param feePct Fee % charged when claims are made that delegate to the caller's boost.
                       Given as a whole number out of 10000. If set to type(uint16).max, the fee
-                      is set by calling `IBoostDelegate(callback).getFeePct` prior to each claim.
+                      is set by calling `IBoostCallback(callback).getFeePct` prior to each claim.
         @param callback Optional contract address to receive a callback each time a claim is
                         made which delegates to the caller's boost.
      */
@@ -626,7 +626,7 @@ contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
                 hasDelegateCallback: hasDelegateCallback,
                 hasReceiverCallback: hasReceiverCallback,
                 feePct: uint16(feePct),
-                callback: IBoostDelegate(callback)
+                callback: IBoostCallback(callback)
             });
         } else {
             boostDelegation[account] = Delegation({
@@ -634,7 +634,7 @@ contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
                 hasDelegateCallback: false,
                 hasReceiverCallback: hasReceiverCallback,
                 feePct: 0,
-                callback: IBoostDelegate(callback)
+                callback: IBoostCallback(callback)
             });
         }
         emit BoostDelegationSet(account, isEnabled, hasDelegateCallback, hasReceiverCallback, feePct, callback);

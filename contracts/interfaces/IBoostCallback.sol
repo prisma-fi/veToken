@@ -3,12 +3,12 @@
 pragma solidity ^0.8.0;
 
 /**
-    @title Prisma Boost Delegate Interface
+    @title Prisma Boost Callback Interface
     @notice When enabling boost delegation via `Vault.setBoostDelegationParams`,
             you may optionally set a `callback` contract. If set, it should adhere
             to the following interface.
  */
-interface IBoostDelegate {
+interface IBoostCallback {
     /**
         @notice Get the current fee percent charged to use this boost delegate
         @dev Optional. Only called if the feePct is set to `type(uint16).max` when
