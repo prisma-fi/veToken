@@ -3,10 +3,9 @@
 pragma solidity ^0.8.0;
 
 /**
-    @title Boost Callback Interface
-    @notice When enabling boost delegation via `Vault.setBoostDelegationParams`,
-            you may optionally set a `callback` contract. If set, it should adhere
-            to the following interface.
+    @title Fee Claim Callback
+    @notice Allows boost fee claimants to trigger a callback. 
+            Callback should adhere to the following interface.
  */
 interface IFeeClaimCallback {
 
