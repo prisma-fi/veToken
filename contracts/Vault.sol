@@ -12,6 +12,7 @@ import "./interfaces/IEmissionSchedule.sol";
 import "./interfaces/IIncentiveVoting.sol";
 import "./interfaces/ITokenLocker.sol";
 import "./interfaces/IBoostCallback.sol";
+import "./interfaces/IFeeClaimCallback.sol";
 import "./interfaces/IBoostCalculator.sol";
 import "./interfaces/IEmissionReceiver.sol";
 
@@ -483,14 +484,22 @@ contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
     /**
         @notice Claim tokens earned from boost delegation fees
         @param receiver Address to transfer the tokens to
+        @param callback Optional callback. Use zero address to ignore.
         @return bool Success
      */
     function claimBoostDelegationFees(
         address account,
-        address receiver
+        address receiver,
+        address callback
     ) external callerOrDelegated(account) returns (bool) {
         uint256 amount = storedPendingReward[account];
         require(amount >= LOCK_TO_TOKEN_RATIO, "Nothing to claim");
+        if (callback != address(0)) {
+            require(
+                IFeeClaimCallback(callback).feeClaimCallback(account, receiver, amount),
+                "Fee claim callback rejected"
+            );
+        }
         _transferOrLock(account, receiver, amount);
         return true;
     }
