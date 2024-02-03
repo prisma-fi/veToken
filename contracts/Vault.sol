@@ -451,6 +451,7 @@ contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
 
     /**
         @notice Claim earned tokens from multiple reward contracts, optionally with delegated boost
+
         @param receiver Address to transfer tokens to. Any earned 3rd-party rewards
                         are also sent to this address.
         @param boostDelegate Address to delegate boost from during this claim. Set as
@@ -491,6 +492,13 @@ contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
     ) external callerOrDelegated(account) returns (bool) {
         uint256 amount = storedPendingReward[account];
         require(amount >= LOCK_TO_TOKEN_RATIO, "Nothing to claim");
+        Delegation memory data = boostDelegation[receiver];
+        if (data.hasReceiverCallback) {
+            require(
+                data.callback.receiverCallback(account, receiver, address(0), amount),
+                "Fee claim callback rejected"
+            );
+        }
         _transferOrLock(account, receiver, amount);
         return true;
     }
