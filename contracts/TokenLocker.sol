@@ -867,11 +867,11 @@ contract TokenLocker is BaseConfig, CoreOwnable, SystemStart {
             require(remaining == 0, "Insufficient balance after fees");
         }
 
-        accountData.locked -= uint32((amountToWithdraw + penaltyTotal - unlocked) / LOCK_TO_TOKEN_RATIO);
-        totalDecayRate -= uint32((amountToWithdraw + penaltyTotal - unlocked) / LOCK_TO_TOKEN_RATIO);
         systemEpoch = getEpoch();
         accountEpochWeights[msg.sender][systemEpoch] = uint40(weight - decreasedWeight);
         totalEpochWeights[systemEpoch] = uint40(getTotalWeightWrite() - decreasedWeight);
+        accountData.locked -= uint32((amountToWithdraw + penaltyTotal - unlocked) / LOCK_TO_TOKEN_RATIO);
+        totalDecayRate -= uint32((amountToWithdraw + penaltyTotal - unlocked) / LOCK_TO_TOKEN_RATIO);
 
         govToken.transfer(msg.sender, amountToWithdraw);
         govToken.transfer(CORE_OWNER.feeReceiver(), penaltyTotal);
