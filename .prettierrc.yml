@@ -1,4 +1,6 @@
 bracketSpacing: true
+plugins:
+  - "prettier-plugin-solidity"
 printWidth: 120
 proseWrap: "always"
 singleQuote: false
@@ -8,6 +10,6 @@ trailingComma: "all"
 overrides:
   - files: "*.sol"
     options:
-      compiler: "0.8.19"
+      compiler: "0.8.23"
       parser: "solidity-parse"
       tabWidth: 4
