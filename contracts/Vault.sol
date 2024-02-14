@@ -82,6 +82,12 @@ contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
         uint256 amount;
     }
 
+    struct InitialReceiver {
+        address receiver;
+        uint256 count;
+        uint256[] maxEmissionPct;
+    }
+
     event NewReceiverRegistered(address receiver, uint256 id);
     event ReceiverMaxEmissionPctSet(uint256 indexed id, uint256 maxPct);
     event UnallocatedSupplyReduced(uint256 reducedAmount, uint256 unallocatedTotal);
@@ -115,7 +121,8 @@ contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
         IBoostCalculator _boostCalculator,
         uint64 initialLockDuration,
         uint128[] memory _fixedInitialAmounts,
-        InitialAllowance[] memory initialAllowances
+        InitialAllowance[] memory initialAllowances,
+        InitialReceiver[] memory initialReceivers
     ) CoreOwnable(core) SystemStart(core) {
         govToken = _token;
         tokenLocker = _locker;
@@ -155,6 +162,15 @@ contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
         emit EmissionScheduleSet(address(_emissionSchedule));
         emit BoostCalculatorSet(address(_boostCalculator));
         emit UnallocatedSupplyReduced(totalAllocated, unallocatedTotal);
+
+        length = initialReceivers.length;
+        for (uint i = 0; i < length; i++) {
+            _registerReceiver(
+                initialReceivers[i].receiver,
+                initialReceivers[i].count,
+                initialReceivers[i].maxEmissionPct
+            );
+        }
     }
 
     function receiverCount() external view returns (uint256) {
@@ -260,8 +276,14 @@ contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
     function registerReceiver(
         address receiver,
         uint256 count,
-        uint256[] calldata maxEmissionPct
+        uint256[] memory maxEmissionPct
     ) external onlyOwner returns (bool) {
+        _registerReceiver(receiver, count, maxEmissionPct);
+
+        return true;
+    }
+
+    function _registerReceiver(address receiver, uint256 count, uint256[] memory maxEmissionPct) internal {
         require(maxEmissionPct.length == count, "Invalid maxEmissionPct.length");
         uint256[] memory assignedIds = new uint256[](count);
         uint16 epoch = uint16(getEpoch());
@@ -278,8 +300,6 @@ contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
         // notify the receiver contract of the newly registered ID
         // also serves as a sanity check to ensure the contract is capable of receiving emissions
         IEmissionReceiver(receiver).notifyRegisteredId(assignedIds);
-
-        return true;
     }
 
     /**

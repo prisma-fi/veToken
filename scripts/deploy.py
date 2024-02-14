@@ -112,6 +112,7 @@ def main():
         INITIAL_LOCK_DURATION,
         FIXED_INITIAL_AMOUNTS,
         ALLOWANCES,
+        [],
         {"from": deployer},
     )
     boost = BoostCalculator.deploy(
