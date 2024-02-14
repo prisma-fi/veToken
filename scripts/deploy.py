@@ -43,6 +43,9 @@ ALLOWANCES = []
 # emissions are initially locked for this many epochs upon claim
 INITIAL_LOCK_DURATION = 26
 
+# are penalty withdrawals of locked positions enabled initially?
+PENALTY_WITHDRAWAL_ENABLED = True
+
 # each time this many epochs pass, the lock-on-claim duration decreases by 1 epoch
 LOCK_EPOCHS_DECAY_RATE = 2
 
@@ -95,7 +98,9 @@ def main():
     token = GovToken.deploy(
         TOKEN_NAME, TOKEN_SYMBOL, vault, locker, TOKEN_TOTAL_SUPPLY, {"from": deployer}
     )
-    locker = TokenLocker.deploy(core, token, voter, LOCK_TO_TOKEN_RATIO, {"from": deployer})
+    locker = TokenLocker.deploy(
+        core, token, voter, LOCK_TO_TOKEN_RATIO, PENALTY_WITHDRAWAL_ENABLED, {"from": deployer}
+    )
     voter = IncentiveVoting.deploy(core, locker, vault, {"from": deployer})
     vault = Vault.deploy(
         core,

@@ -28,7 +28,7 @@ contract TokenLocker is BaseConfig, CoreOwnable, SystemStart {
     IGovToken public immutable govToken;
     IIncentiveVoting public immutable incentiveVoter;
 
-    bool public penaltyWithdrawalsEnabled;
+    bool public isPenaltyWithdrawalEnabled;
 
     struct AccountData {
         // Currently locked balance. Each epoch the lock weight decays by this amount.
@@ -89,17 +89,20 @@ contract TokenLocker is BaseConfig, CoreOwnable, SystemStart {
     event LocksFrozen(address indexed account, uint256 amount);
     event LocksUnfrozen(address indexed account, uint256 amount);
     event LocksWithdrawn(address indexed account, uint256 withdrawn, uint256 penalty);
+    event PenaltyWithdrawalSet(bool enabled);
 
     constructor(
         address core,
         IGovToken _token,
         IIncentiveVoting _voter,
-        uint256 _lockToTokenRatio
+        uint256 _lockToTokenRatio,
+        bool _penaltyWithdrawalsEnabled
     ) CoreOwnable(core) SystemStart(core) {
         govToken = _token;
         incentiveVoter = _voter;
 
         LOCK_TO_TOKEN_RATIO = _lockToTokenRatio;
+        isPenaltyWithdrawalEnabled = _penaltyWithdrawalsEnabled;
 
         require(_token.totalSupply() <= type(uint32).max * _lockToTokenRatio, "Total supply too large!");
     }
@@ -112,8 +115,9 @@ contract TokenLocker is BaseConfig, CoreOwnable, SystemStart {
     /**
         @notice Allow or disallow early-exit of locks by paying a penalty
      */
-    function setPenaltyWithdrawalsEnabled(bool _enabled) external onlyOwner returns (bool) {
-        penaltyWithdrawalsEnabled = _enabled;
+    function setPenaltyWithdrawalEnabled(bool _enabled) external onlyOwner returns (bool) {
+        isPenaltyWithdrawalEnabled = _enabled;
+        emit PenaltyWithdrawalSet(_enabled);
         return true;
     }
 
@@ -790,7 +794,7 @@ contract TokenLocker is BaseConfig, CoreOwnable, SystemStart {
         @return uint256 Amount of tokens withdrawn
      */
     function withdrawWithPenalty(uint256 amountToWithdraw) external notFrozen(msg.sender) returns (uint256) {
-        require(penaltyWithdrawalsEnabled, "Penalty withdrawals are disabled");
+        require(isPenaltyWithdrawalEnabled, "Penalty withdrawals are disabled");
         AccountData storage accountData = accountLockData[msg.sender];
         uint32[65535] storage unlocks = accountEpochUnlocks[msg.sender];
         uint256 weight = _epochWeightWrite(msg.sender);
