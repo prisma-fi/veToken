@@ -16,7 +16,8 @@ import "./interfaces/IEmissionReceiver.sol";
 
 /**
     @title Vault
-    @notice The total supply of `GovernanceToken` is initially minted to this contract.
+    @author Prisma Finance
+    @notice The total supply of `GovToken` is initially minted to this contract.
             The govToken balance held here can be considered "uncirculating". The
             vault gradually releases tokens to registered emissions receivers
             as determined by `EmissionSchedule` and `BoostCalculator`.
