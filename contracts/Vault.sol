@@ -111,6 +111,7 @@ contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
         uint256 receivedAmount,
         uint256 delegateFeeAmount
     );
+    event DelegateFeePaid(address indexed claimant, address indexed delegate, uint256 feeAmount);
 
     constructor(
         address core,
@@ -471,7 +472,6 @@ contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
 
     /**
         @notice Claim earned tokens from multiple reward contracts, optionally with delegated boost
-
         @param receiver Address to transfer tokens to. Any earned 3rd-party rewards
                         are also sent to this address.
         @param boostDelegate Address to delegate boost from during this claim. Set as
@@ -584,7 +584,10 @@ contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
             _transferOrLock(account, receiver, adjustedAmount);
 
             // apply delegate fee and optionally perform delegate callback
-            if (fee != 0) storedPendingReward[boostDelegate] += fee;
+            if (fee != 0) {
+                storedPendingReward[boostDelegate] += fee;
+                emit DelegateFeePaid(account, boostDelegate, fee);
+            }
             if (address(delegateCallback) != address(0)) {
                 require(
                     delegateCallback.delegateCallback(
