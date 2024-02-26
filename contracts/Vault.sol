@@ -3,7 +3,6 @@
 pragma solidity 0.8.23;
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/Address.sol";
 import "./dependencies/BaseConfig.sol";
 import "./dependencies/CoreOwnable.sol";
 import "./dependencies/DelegatedOps.sol";
@@ -23,7 +22,6 @@ import "./interfaces/IEmissionReceiver.sol";
             as determined by `EmissionSchedule` and `BoostCalculator`.
  */
 contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
-    using Address for address;
     using SafeERC20 for IERC20;
 
     IERC20 public immutable govToken;
@@ -654,9 +652,6 @@ contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
         uint256 feePct,
         address callback
     ) external callerOrDelegated(account) returns (bool) {
-        if (hasDelegateCallback || hasReceiverCallback || feePct == type(uint16).max) {
-            require(callback.isContract(), "Callback must be a contract");
-        }
         if (isDelegationEnabled) {
             require(feePct <= MAX_PCT || feePct == type(uint16).max, "Invalid feePct");
             boostDelegation[account] = Delegation({
