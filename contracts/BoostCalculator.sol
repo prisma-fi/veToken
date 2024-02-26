@@ -58,7 +58,7 @@ import "./dependencies/SystemStart.sol";
             emissions of future epochs.
  */
 contract BoostCalculator is CoreOwnable, SystemStart {
-    ITokenLocker public immutable locker;
+    ITokenLocker public immutable tokenLocker;
 
     // initial number of epochs where all accounts recieve max boost
     uint256 public immutable MAX_BOOST_GRACE_EPOCHS;
@@ -103,7 +103,7 @@ contract BoostCalculator is CoreOwnable, SystemStart {
         uint16 _maxBoostPct,
         uint16 _decayPct
     ) CoreOwnable(_core) SystemStart(_core) {
-        locker = _locker;
+        tokenLocker = _locker;
         MAX_BOOST_GRACE_EPOCHS = _graceEpochs + getEpoch();
 
         maxBoostMultiplier = _maxBoostMul;
@@ -206,12 +206,12 @@ contract BoostCalculator is CoreOwnable, SystemStart {
         if (lockPct == 0) {
             uint256 totalWeight = totalEpochWeights[epoch];
             if (totalWeight == 0) {
-                totalWeight = locker.getTotalWeightAt(epoch);
+                totalWeight = tokenLocker.getTotalWeightAt(epoch);
                 if (totalWeight == 0) totalWeight = 1;
                 totalEpochWeights[epoch] = uint40(totalWeight);
             }
 
-            uint256 accountWeight = locker.getAccountWeightAt(account, epoch);
+            uint256 accountWeight = tokenLocker.getAccountWeightAt(account, epoch);
             lockPct = (1e9 * accountWeight) / totalWeight;
             if (lockPct == 0) lockPct = 1;
             accountEpochLockPct[account][epoch] = uint32(lockPct);
@@ -240,8 +240,8 @@ contract BoostCalculator is CoreOwnable, SystemStart {
         }
         epoch -= 1;
 
-        uint256 accountWeight = locker.getAccountWeightAt(account, epoch);
-        uint256 totalWeight = locker.getTotalWeightAt(epoch);
+        uint256 accountWeight = tokenLocker.getAccountWeightAt(account, epoch);
+        uint256 totalWeight = tokenLocker.getTotalWeightAt(epoch);
         if (totalWeight == 0) totalWeight = 1;
         uint256 lockPct = (1e9 * accountWeight) / totalWeight;
         if (lockPct == 0) lockPct = 1;

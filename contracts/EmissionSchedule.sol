@@ -21,7 +21,7 @@ contract EmissionSchedule is IEmissionSchedule, BaseConfig, CoreOwnable, SystemS
     event EpochPctScheduleSet(uint64[2][] schedule);
     event LockParametersSet(uint256 lockDuration, uint256 lockDecayEpochs);
 
-    IIncentiveVoting public immutable voter;
+    IIncentiveVoting public immutable incentiveVoter;
     address public immutable vault;
 
     // current number of epochs that emissions are locked for when they are claimed
@@ -45,7 +45,7 @@ contract EmissionSchedule is IEmissionSchedule, BaseConfig, CoreOwnable, SystemS
         uint64 _perEpochPct,
         uint64[2][] memory _scheduledEpochPct
     ) CoreOwnable(core) SystemStart(core) {
-        voter = _voter;
+        incentiveVoter = _voter;
         vault = _vault;
 
         lockDuration = _initialLockDuration;
@@ -93,7 +93,7 @@ contract EmissionSchedule is IEmissionSchedule, BaseConfig, CoreOwnable, SystemS
         uint256 totalEpochEmissions
     ) external returns (uint256) {
         require(msg.sender == vault);
-        uint256 pct = voter.getReceiverVotePct(id, epoch);
+        uint256 pct = incentiveVoter.getReceiverVotePct(id, epoch);
 
         return (totalEpochEmissions * pct) / 1e18;
     }
@@ -172,3 +172,4 @@ contract EmissionSchedule is IEmissionSchedule, BaseConfig, CoreOwnable, SystemS
         emit EpochPctScheduleSet(_scheduledEpochPct);
     }
 }
+`

@@ -68,7 +68,7 @@ interface IVault {
 
     function lockDuration() external view returns (uint64);
 
-    function locker() external view returns (address);
+    function tokenLocker() external view returns (address);
 
     function owner() external view returns (address);
 
@@ -80,5 +80,5 @@ interface IVault {
 
     function unallocatedTotal() external view returns (uint128);
 
-    function voter() external view returns (address);
+    function incentiveVoter() external view returns (address);
 }

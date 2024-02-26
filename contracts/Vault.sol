@@ -27,7 +27,7 @@ contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
 
     IERC20 public immutable govToken;
     ITokenLocker public immutable tokenLocker;
-    IIncentiveVoting public immutable voter;
+    IIncentiveVoting public immutable incentiveVoter;
     uint256 immutable LOCK_TO_TOKEN_RATIO;
 
     IEmissionSchedule public emissionSchedule;
@@ -126,7 +126,7 @@ contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
     ) CoreOwnable(core) SystemStart(core) {
         govToken = _token;
         tokenLocker = _locker;
-        voter = _voter;
+        incentiveVoter = _voter;
         LOCK_TO_TOKEN_RATIO = _locker.LOCK_TO_TOKEN_RATIO();
 
         emissionSchedule = _emissionSchedule;
@@ -174,7 +174,7 @@ contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
     }
 
     function receiverCount() external view returns (uint256) {
-        return voter.receiverCount();
+        return incentiveVoter.receiverCount();
     }
 
     /**
@@ -291,7 +291,7 @@ contract Vault is BaseConfig, CoreOwnable, DelegatedOps, SystemStart {
             uint256 maxPct = maxEmissionPct[i];
             if (maxPct == 0) maxPct = MAX_PCT;
             else require(maxPct <= MAX_PCT, "Invalid maxEmissionPct");
-            uint256 id = voter.registerNewReceiver();
+            uint256 id = incentiveVoter.registerNewReceiver();
             assignedIds[i] = id;
             receiverUpdatedEpoch[id] = epoch;
             idToReceiver[id] = Receiver({ account: receiver, maxEmissionPct: uint16(maxPct) });
