@@ -172,4 +172,3 @@ contract EmissionSchedule is IEmissionSchedule, BaseConfig, CoreOwnable, SystemS
         emit EpochPctScheduleSet(_scheduledEpochPct);
     }
 }
-`
