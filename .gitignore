@@ -8,6 +8,7 @@
 
 # Buidler compilation cache
 /cache
+/out
 
 # Ethereum accounts for testing
 /accountsList.js
